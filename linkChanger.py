@@ -30,7 +30,7 @@ HEADERS = {
     'Referer': 'https://pan.baidu.com',
 }
 
-# 默认保存路径
+# 默认保存路径 (固定路径，如果存在则直接存入，不会创建副本)
 FIXED_SAVE_PATH = "我的资源/LinkChanger"
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
@@ -284,7 +284,7 @@ def process_single_link(network, match, full_text, root_path, log_container):
     final_folder_name = f"{folder_name}_{safe_suffix}"
     full_save_path = f"{root_path}/{final_folder_name}"
 
-    # 1. 创建子目录
+    # 1. 创建子目录 (如果子目录重名，才会尝试使用时间戳命名子目录，而不是根目录)
     create_res = network.create_dir(full_save_path)
     if create_res != 0 and create_res != -8:
         # 重试策略
@@ -329,27 +329,17 @@ def main():
         # 1. 智能读取 Secrets (支持多种格式)
         default_cookie = ""
         
-        # 尝试方式 A: [baidu] cookie = "..."
         if "baidu" in st.secrets and "cookie" in st.secrets["baidu"]:
             default_cookie = st.secrets["baidu"]["cookie"]
-        
-        # 尝试方式 B: BD_COOKIE = "..." (你可能用的这种)
         elif "BD_COOKIE" in st.secrets:
             default_cookie = st.secrets["BD_COOKIE"]
-            
-        # 尝试方式 C: cookie = "..." (直接放在根目录)
         elif "cookie" in st.secrets:
             default_cookie = st.secrets["cookie"]
             
-        # 调试信息 (如果还是空的，会在侧边栏显示当前读取到了什么Key，方便排查)
-        # if not default_cookie:
-        #     st.caption(f"调试: 检测到的Secrets Keys: {list(st.secrets.keys())}")
-        
-        # 2. 显示输入框
+        # 2. 显示输入框 (已修改：移除 type="password"，现在直接显示文本)
         user_cookie = st.text_input(
             "百度 Cookie (BDUSS等)",
             value=default_cookie,
-            type="password", 
             help="优先读取 Secrets 配置，也可在此处临时修改。"
         )
 
@@ -380,7 +370,7 @@ def main():
 
         processed_text = clean_quark_links(input_text)
         
-        # 初始化网络类，使用侧边栏（或Secrets）里的 Cookie
+        # 初始化网络类
         network = Network(user_cookie)
 
         # 验证 Token
@@ -406,7 +396,10 @@ def main():
         success_count = 0
         total_links = len(matches)
 
-        # === 关键修正：在循环前只创建一次根目录 ===
+        # === 目录逻辑确认 ===
+        # 这里尝试创建 FIXED_SAVE_PATH ("我的资源/LinkChanger")
+        # 如果文件夹已存在，百度接口返回 errno -8，代码会自动忽略，继续使用该目录
+        # 绝对不会因为存在而新建一个 "LinkChanger_时间戳" 的根目录
         network.create_dir(FIXED_SAVE_PATH)
 
         # 使用折叠框显示详细日志
