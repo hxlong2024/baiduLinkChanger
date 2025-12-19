@@ -19,7 +19,6 @@ HEADERS = {
     'Referer': 'https://pan.baidu.com',
 }
 
-# 用户指定的固定配置
 FIXED_SAVE_PATH = "linkchanger/link"
 FIXED_COOKIE = r"XFI=5610b6a6-9c5b-5af5-2920-01c6f26cd68e; XFCS=F867D20ADD986D508B4FE3FC9808AF594712E01CED1ECEA8A4509FE3681EF65A; XFT=+aWVjJd3bSgnCMTSdWoHwdzzwpN3sEvD6qltd+NJ16U=; PANWEB=1; BAIDU_WISE_UID=wapp_1757493034845_354; scholar_new_version=1; __bid_n=199562b36651328548f06c; scholar_new_detail=1; BIDUPSID=1D0E90A4825BC0724DDDE7091DA86F18; PSTM=1758790941; BAIDUID=1D0E90A4825BC0724DDDE7091DA86F18:SL=0:NR=10:FG=1; BAIDUID_BFESS=1D0E90A4825BC0724DDDE7091DA86F18:SL=0:NR=10:FG=1; MAWEBCUID=web_beWNQkUiLcQQKTWugVChMJZhRTUPPaCiFaATwGLlhjwmIkROOx; ZFY=Ox2DfbvW6ZTnC:ALtyhO:B87488WU3duP6wlSdAlihrp0:C; Hm_lvt_fa0277816200010a74ab7d2895df481b=1762328389; newlogin=1; ploganondeg=1; H_PS_PSSID=60275_63147_65361_65894_65986_66101_66122_66218_66203_66169_66359_66287_66261_66393_66394_66443_66511_66516_66529_66558_66584_66591_66599_66604_66615; H_WISE_SIDS=60275_63147_65361_65894_65986_66101_66122_66218_66203_66169_66359_66287_66261_66393_66394_66443_66511_66516_66529_66558_66584_66591_66599_66604_66615; BDUSS=NXdVgxSXBOUmtzR0NzUk80U1dJQ2tDb1p4ZVo1Rm9sWmVKc0NVRmMxUEQxVmxwSVFBQUFBJCQAAAAAAAAAAAEAAAB1B9yX0KGxprXEufvBo7PIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMNIMmnDSDJpTH; BDUSS_BFESS=NXdVgxSXBOUmtzR0NzUk80U1dJQ2tDb1p4ZVo1Rm9sWmVKc0NVRmMxUEQxVmxwSVFBQUFBJCQAAAAAAAAAAAEAAAB1B9yX0KGxprXEufvBo7PIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMNIMmnDSDJpTH; STOKEN=6b758669a4bcfae2afe57badfc0d5b73ac4f9adf9f70d10dedafcd910b50ec61; Hm_lvt_7a3960b6f067eb0085b7f96ff5e660b0=1764034348,1764155073,1764551731,1765087281; BDCLND=EphFZs3F45F%2Bem1Ozl0fXIAgegDn0BKAaY5F4JRQPQA%3D; ZD_ENTRY=bing; PANPSC=3843437961712308433%3Au9Rut0jYI4qfFLw%2F5TJWE1cS2d9ns3O5C61tf8CKQkhoIDnjYJB5kw3MPJHnDhkCz81ttRoL0tAiVxZWCjKhbOJEKVZg82vZj7FJ7ADqJPsWXujC1eV6KOKEQjOY60ydECuWaePJJP%2B4A0ipQ2gQX0SbgxEKExKM0oUakcVUn8vvFIVZmIcELSHq5mg%2FcPBD1h8mCCD3Fkn75SjD4q9rtpR00d0Z6OohxASwYanDF8KxzJ2BeBROmwWMR6ewJUxvytJJL%2BMQEINTBmV4fV02TuU0aYK2SJHYLx2iyOOtLODyPJDZ5fFjQ7Xf7ylHQwl61C1ubP4y%2FN8Mc%2FxAohkhNA%3D%3D; csrfToken=6GJipGLUWpJ88u6IiL03XfYH; Hm_lvt_182d6d59474cf78db37e0b2248640ea5=1765087298,1765977114; HMACCOUNT=729A66B9AF8EBD50; ndut_fmt=FE31FDC675D66019B8D6FF97322125AD358CB961CE4545AF6F65A199A29DB000; ab_sr=1.0.1_NzIzZWM0YmNjNzEwZDFkMDEyYTgzYjdmYmVjYjU5MjcwMDhiZGI4YTAwNTYwODMxNzg4MTA5MDliZWI0ZjA0ZTJlODJlMDcwMTA1ZDBiMWI3NDM0ZDJkMWY1YmVhM2MwZjY3Y2E2ZDI1OTYyZTM1Nzk1NWZiZmQ2YTk2YTA3Y2NkNjc2N2Q3MDgzNTI2ZTdjNTEyY2VmYzQ4Yzc3NWU3Njc0ODM1MThmZTE1NzRmNmVmZmVhZDRmMWJjMjhjMGMx; Hm_lpvt_182d6d59474cf78db37e0b2248640ea5=1765977167"
 
@@ -91,7 +90,6 @@ def parse_response(content: str) -> Union[List[Any], int]:
 
 
 def create_copy_button_html(text_to_copy: str):
-    """生成一个可以复制指定文本的HTML按钮"""
     safe_text = json.dumps(text_to_copy)[1:-1]
     
     html = f"""
@@ -214,7 +212,6 @@ class Network:
         r = self.s.post(url, params=params, data=data, headers=self.headers, verify=False)
         return r.json()['errno']
 
-    # --- 新增：删除文件方法 ---
     @retry(stop_max_attempt_number=3)
     def delete_file(self, path: str) -> int:
         """删除指定文件或文件夹"""
@@ -286,7 +283,9 @@ def process_single_link(network, match, full_text, root_path):
     final_folder_name = f"{folder_name}_{safe_suffix}"
     full_save_path = f"{root_path}/{final_folder_name}"
 
-    network.create_dir(root_path)
+    # === 修改点1：移除了这里的 network.create_dir(root_path) ===
+    # 之前这行代码在循环里，每次都去创建 "link" 文件夹，导致百度云生成 "link_时间戳" 副本
+    
     create_res = network.create_dir(full_save_path)
 
     if create_res != 0 and create_res != -8:
@@ -298,18 +297,15 @@ def process_single_link(network, match, full_text, root_path):
             st.error(f"❌ 目录创建失败，跳过。")
             return None
 
-    # --- 转存并处理失败情况 ---
     transfer_res = network.transfer_file(params, full_save_path)
     if transfer_res != 0:
         st.error(f"❌ 转存文件失败 (代码: {transfer_res})，正在清理空文件夹...")
-        # 失败时立即删除空文件夹
         del_res = network.delete_file(full_save_path)
         if del_res == 0:
             st.info(f"🧹 已自动删除无效目录: {final_folder_name}")
         else:
             st.warning(f"⚠️ 自动清理失败，请手动删除: {final_folder_name}")
         return None
-    # -----------------------
 
     fs_id = network.get_dir_fsid(root_path, final_folder_name)
     if not fs_id:
@@ -374,6 +370,10 @@ def main():
             final_text = processed_text
             success_count = 0
 
+            # === 修改点2：在循环开始前，统一创建一次根目录 ===
+            # 这样只执行一次，如果已存在就不会重复触发百度的重命名机制
+            network.create_dir(FIXED_SAVE_PATH)
+
             for match in reversed(matches):
                 st.divider()
                 new_link = process_single_link(network, match, processed_text, FIXED_SAVE_PATH)
@@ -390,10 +390,7 @@ def main():
         if success_count > 0:
             st.subheader("🎉 处理结果")
             
-            # 1. 使用文本框展示结果
             st.text_area("结果内容", value=final_text, height=300, label_visibility="collapsed")
-            
-            # 2. 嵌入JS脚本的HTML按钮
             components.html(create_copy_button_html(final_text), height=60)
 
 
