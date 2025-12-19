@@ -10,7 +10,18 @@ import json
 from typing import Union, List, Any
 
 # ==========================================
-# 第一部分：配置与常量
+# 第一部分：Streamlit 页面配置
+# ==========================================
+
+st.set_page_config(
+    page_title="转存助手 Pro",
+    page_icon="🔗",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==========================================
+# 第二部分：配置与常量
 # ==========================================
 
 BASE_URL = 'https://pan.baidu.com'
@@ -19,14 +30,13 @@ HEADERS = {
     'Referer': 'https://pan.baidu.com',
 }
 
-FIXED_SAVE_PATH = "linkchanger/link"
-FIXED_COOKIE = r"XFI=5610b6a6-9c5b-5af5-2920-01c6f26cd68e; XFCS=F867D20ADD986D508B4FE3FC9808AF594712E01CED1ECEA8A4509FE3681EF65A; XFT=+aWVjJd3bSgnCMTSdWoHwdzzwpN3sEvD6qltd+NJ16U=; PANWEB=1; BAIDU_WISE_UID=wapp_1757493034845_354; scholar_new_version=1; __bid_n=199562b36651328548f06c; scholar_new_detail=1; BIDUPSID=1D0E90A4825BC0724DDDE7091DA86F18; PSTM=1758790941; BAIDUID=1D0E90A4825BC0724DDDE7091DA86F18:SL=0:NR=10:FG=1; BAIDUID_BFESS=1D0E90A4825BC0724DDDE7091DA86F18:SL=0:NR=10:FG=1; MAWEBCUID=web_beWNQkUiLcQQKTWugVChMJZhRTUPPaCiFaATwGLlhjwmIkROOx; ZFY=Ox2DfbvW6ZTnC:ALtyhO:B87488WU3duP6wlSdAlihrp0:C; Hm_lvt_fa0277816200010a74ab7d2895df481b=1762328389; newlogin=1; ploganondeg=1; H_PS_PSSID=60275_63147_65361_65894_65986_66101_66122_66218_66203_66169_66359_66287_66261_66393_66394_66443_66511_66516_66529_66558_66584_66591_66599_66604_66615; H_WISE_SIDS=60275_63147_65361_65894_65986_66101_66122_66218_66203_66169_66359_66287_66261_66393_66394_66443_66511_66516_66529_66558_66584_66591_66599_66604_66615; BDUSS=NXdVgxSXBOUmtzR0NzUk80U1dJQ2tDb1p4ZVo1Rm9sWmVKc0NVRmMxUEQxVmxwSVFBQUFBJCQAAAAAAAAAAAEAAAB1B9yX0KGxprXEufvBo7PIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMNIMmnDSDJpTH; BDUSS_BFESS=NXdVgxSXBOUmtzR0NzUk80U1dJQ2tDb1p4ZVo1Rm9sWmVKc0NVRmMxUEQxVmxwSVFBQUFBJCQAAAAAAAAAAAEAAAB1B9yX0KGxprXEufvBo7PIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMNIMmnDSDJpTH; STOKEN=6b758669a4bcfae2afe57badfc0d5b73ac4f9adf9f70d10dedafcd910b50ec61; Hm_lvt_7a3960b6f067eb0085b7f96ff5e660b0=1764034348,1764155073,1764551731,1765087281; BDCLND=EphFZs3F45F%2Bem1Ozl0fXIAgegDn0BKAaY5F4JRQPQA%3D; ZD_ENTRY=bing; PANPSC=3843437961712308433%3Au9Rut0jYI4qfFLw%2F5TJWE1cS2d9ns3O5C61tf8CKQkhoIDnjYJB5kw3MPJHnDhkCz81ttRoL0tAiVxZWCjKhbOJEKVZg82vZj7FJ7ADqJPsWXujC1eV6KOKEQjOY60ydECuWaePJJP%2B4A0ipQ2gQX0SbgxEKExKM0oUakcVUn8vvFIVZmIcELSHq5mg%2FcPBD1h8mCCD3Fkn75SjD4q9rtpR00d0Z6OohxASwYanDF8KxzJ2BeBROmwWMR6ewJUxvytJJL%2BMQEINTBmV4fV02TuU0aYK2SJHYLx2iyOOtLODyPJDZ5fFjQ7Xf7ylHQwl61C1ubP4y%2FN8Mc%2FxAohkhNA%3D%3D; csrfToken=6GJipGLUWpJ88u6IiL03XfYH; Hm_lvt_182d6d59474cf78db37e0b2248640ea5=1765087298,1765977114; HMACCOUNT=729A66B9AF8EBD50; ndut_fmt=FE31FDC675D66019B8D6FF97322125AD358CB961CE4545AF6F65A199A29DB000; ab_sr=1.0.1_NzIzZWM0YmNjNzEwZDFkMDEyYTgzYjdmYmVjYjU5MjcwMDhiZGI4YTAwNTYwODMxNzg4MTA5MDliZWI0ZjA0ZTJlODJlMDcwMTA1ZDBiMWI3NDM0ZDJkMWY1YmVhM2MwZjY3Y2E2ZDI1OTYyZTM1Nzk1NWZiZmQ2YTk2YTA3Y2NkNjc2N2Q3MDgzNTI2ZTdjNTEyY2VmYzQ4Yzc3NWU3Njc0ODM1MThmZTE1NzRmNmVmZmVhZDRmMWJjMjhjMGMx; Hm_lpvt_182d6d59474cf78db37e0b2248640ea5=1765977167"
+# 默认保存路径
+FIXED_SAVE_PATH = "我的资源/LinkChanger"
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
 
-
 # ==========================================
-# 第二部分：核心工具函数
+# 第三部分：核心工具函数
 # ==========================================
 
 def sanitize_filename(name: str) -> str:
@@ -35,7 +45,6 @@ def sanitize_filename(name: str) -> str:
     clean_name = INVALID_CHARS_REGEX.sub('', name)
     clean_name = re.sub(r'\s+', ' ', clean_name).strip()
     return clean_name
-
 
 def extract_folder_name(full_text: str, match_start: int) -> str:
     lookback_limit = max(0, match_start - 200)
@@ -59,20 +68,16 @@ def extract_folder_name(full_text: str, match_start: int) -> str:
         return None
     return final_name[:50]
 
-
 def clean_quark_links(text: str) -> str:
     return re.sub(r'^.*pan\.quark\.cn.*$[\r\n]*', '', text, flags=re.MULTILINE)
-
 
 def update_cookie(bdclnd: str, cookie: str) -> str:
     cookies_dict = dict(map(lambda item: item.split('=', 1), filter(None, cookie.split(';'))))
     cookies_dict['BDCLND'] = bdclnd
     return ';'.join([f'{key}={value}' for key, value in cookies_dict.items()])
 
-
 def generate_code() -> str:
     return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(4))
-
 
 def parse_response(content: str) -> Union[List[Any], int]:
     try:
@@ -88,35 +93,34 @@ def parse_response(content: str) -> Union[List[Any], int]:
         return [shareid.group(1), uk.group(1), fs_id, [], []]
     return -1
 
-
 def create_copy_button_html(text_to_copy: str):
     safe_text = json.dumps(text_to_copy)[1:-1]
-    
     html = f"""
     <style>
     .copy-btn {{
-        background-color: #f0f2f6;
+        background-color: #ffffff;
         color: #31333F;
         padding: 0.5rem 1rem;
         border-radius: 0.5rem;
-        border: 1px solid rgba(49, 51, 63, 0.2);
-        font-family: "Source Sans Pro", sans-serif;
+        border: 1px solid #d6d6d6;
+        font-family: sans-serif;
         font-size: 1rem;
         cursor: pointer;
         width: 100%;
         margin-top: 10px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         transition: all 0.2s;
     }}
     .copy-btn:hover {{
         border-color: #ff4b4b;
         color: #ff4b4b;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }}
     .copy-btn:active {{
         background-color: #ff4b4b;
         color: white;
     }}
     </style>
-    
     <script>
     async function copyToClipboard() {{
         const text = "{safe_text}";
@@ -124,12 +128,12 @@ def create_copy_button_html(text_to_copy: str):
             await navigator.clipboard.writeText(text);
             const btn = document.getElementById("copyBtn");
             const originalText = btn.innerText;
-            btn.innerText = "✅ 已复制到剪贴板！";
+            btn.innerText = "✅ 已复制成功";
             btn.style.borderColor = "#09ab3b";
             btn.style.color = "#09ab3b";
             setTimeout(() => {{
                 btn.innerText = originalText;
-                btn.style.borderColor = "rgba(49, 51, 63, 0.2)";
+                btn.style.borderColor = "#d6d6d6";
                 btn.style.color = "#31333F";
             }}, 2000);
         }} catch (err) {{
@@ -143,21 +147,20 @@ def create_copy_button_html(text_to_copy: str):
         }}
     }}
     </script>
-    <button id="copyBtn" class="copy-btn" onclick="copyToClipboard()">📋 一键复制结果</button>
+    <button id="copyBtn" class="copy-btn" onclick="copyToClipboard()">📋 一键复制全部结果</button>
     """
     return html
 
-
 # ==========================================
-# 第三部分：网络请求类
+# 第四部分：网络请求类
 # ==========================================
 
 class Network:
-    def __init__(self):
+    def __init__(self, cookie_str):
         self.s = requests.Session()
         self.s.trust_env = False
         self.headers = HEADERS.copy()
-        self.headers['Cookie'] = "".join(FIXED_COOKIE.split())
+        self.headers['Cookie'] = "".join(cookie_str.split())
         self.bdstoken = ''
         requests.packages.urllib3.disable_warnings()
 
@@ -214,7 +217,6 @@ class Network:
 
     @retry(stop_max_attempt_number=3)
     def delete_file(self, path: str) -> int:
-        """删除指定文件或文件夹"""
         url = f'{BASE_URL}/api/filemanager'
         if not path.startswith("/"): path = "/" + path
         data = {'filelist': f'["{path}"]'}
@@ -248,12 +250,11 @@ class Network:
                     return item['fs_id']
         return None
 
-
 # ==========================================
-# 第四部分：Streamlit 业务流程
+# 第五部分：Streamlit 业务流程
 # ==========================================
 
-def process_single_link(network, match, full_text, root_path):
+def process_single_link(network, match, full_text, root_path, log_container):
     url = match.group(1)
     pwd_match = re.search(r'(?:\?pwd=|&pwd=|\s+|提取码[:：]?\s*)([a-zA-Z0-9]{4})', match.group(0))
     pwd = pwd_match.group(1) if pwd_match else ""
@@ -262,137 +263,182 @@ def process_single_link(network, match, full_text, root_path):
     folder_name = extract_folder_name(full_text, match.start())
     if not folder_name:
         folder_name = f"Resource_{int(time.time())}"
-        st.write(f"⚠️ 无法提取有效名称，使用默认名: **{folder_name}**")
+        log_container.warning(f"⚠️ 使用默认名: **{folder_name}**")
     else:
-        st.write(f"📂 识别资源名: **{folder_name}**")
+        log_container.info(f"📂 识别: **{folder_name}**")
 
     if pwd:
         res = network.verify_pass_code(clean_url, pwd)
         if isinstance(res, int):
-            st.error(f"❌ 链接验证失败 ({clean_url}) 错误代码: {res}")
+            log_container.error(f"❌ 密码验证失败 ({clean_url})")
             return None
         network.headers['Cookie'] = update_cookie(res, network.headers['Cookie'])
 
     content = network.get_transfer_params(clean_url)
     params = parse_response(content)
     if params == -1:
-        st.error(f"❌ 链接解析失败 ({clean_url})")
+        log_container.error(f"❌ 链接解析失败")
         return None
 
     safe_suffix = generate_code()
     final_folder_name = f"{folder_name}_{safe_suffix}"
     full_save_path = f"{root_path}/{final_folder_name}"
 
-    # === 修改点1：移除了这里的 network.create_dir(root_path) ===
-    # 之前这行代码在循环里，每次都去创建 "link" 文件夹，导致百度云生成 "link_时间戳" 副本
-    
+    # 1. 创建子目录
     create_res = network.create_dir(full_save_path)
-
     if create_res != 0 and create_res != -8:
-        st.warning(f"⚠️ 目录创建失败 (代码: {create_res})，尝试安全名...")
+        # 重试策略
         final_folder_name = f"Transfer_{int(time.time())}_{safe_suffix}"
         full_save_path = f"{root_path}/{final_folder_name}"
-        create_res_retry = network.create_dir(full_save_path)
-        if create_res_retry != 0 and create_res_retry != -8:
-            st.error(f"❌ 目录创建失败，跳过。")
+        if network.create_dir(full_save_path) != 0:
+            log_container.error("❌ 目录创建失败")
             return None
 
+    # 2. 转存
     transfer_res = network.transfer_file(params, full_save_path)
     if transfer_res != 0:
-        st.error(f"❌ 转存文件失败 (代码: {transfer_res})，正在清理空文件夹...")
-        del_res = network.delete_file(full_save_path)
-        if del_res == 0:
-            st.info(f"🧹 已自动删除无效目录: {final_folder_name}")
-        else:
-            st.warning(f"⚠️ 自动清理失败，请手动删除: {final_folder_name}")
+        log_container.error(f"❌ 转存失败 (Code: {transfer_res})，清理空目录...")
+        # 失败时立即删除空文件夹
+        network.delete_file(full_save_path)
         return None
 
+    # 3. 获取ID并分享
     fs_id = network.get_dir_fsid(root_path, final_folder_name)
     if not fs_id:
-        st.error("❌ 无法获取文件夹ID")
+        log_container.error("❌ 获取文件ID失败")
         return None
 
     new_pwd = generate_code()
     share_link = network.create_share(fs_id, new_pwd)
 
     if isinstance(share_link, int):
-        st.error(f"❌ 分享失败 (代码: {share_link})")
+        log_container.error(f"❌ 创建分享失败")
         return None
 
-    st.success(f"✅ 处理成功！")
+    log_container.success(f"✅ 成功")
     return f"{share_link}?pwd={new_pwd}"
-
 
 def clear_text():
     st.session_state["user_input"] = ""
 
-
 def main():
-    st.set_page_config(page_title="转存助手", layout="wide")
+    # --- 侧边栏配置区 ---
+    with st.sidebar:
+        st.header("⚙️ 配置面板")
+        
+        # 1. 尝试从 Secrets 读取默认值
+        default_cookie = ""
+        # 兼容性处理：防止没有配置 secrets 时报错
+        if "baidu" in st.secrets and "cookie" in st.secrets["baidu"]:
+            default_cookie = st.secrets["baidu"]["cookie"]
+        
+        # 2. 显示输入框，允许用户修改
+        # 如果 Secrets 有值，这里会自动填入；如果用户想改，可以直接在这里改
+        user_cookie = st.text_input(
+            "百度 Cookie (BDUSS等)",
+            value=default_cookie,
+            type="password", # 密码模式隐藏字符，如果想看可以改为 "default"
+            help="默认读取 Secrets 配置，也可在此处临时修改。"
+        )
+        
+        if not user_cookie:
+            st.warning("⚠️ 请输入 Cookie 或在 App Settings 配置 Secrets")
 
+        st.divider()
+        st.write("📂 **当前保存路径:**")
+        st.code(FIXED_SAVE_PATH, language="text")
+        st.caption("所有转存资源将存放在网盘此目录下")
+
+    # --- 主界面 ---
+    st.title("🔗 LinkChanger Pro")
+    
     input_text = st.text_area(
-        "📝 待处理文本",
-        height=200,
-        placeholder="在此粘贴包含链接的文本...",
+        "📝 输入资源文本",
+        height=180,
+        placeholder="在此粘贴包含链接的文本（支持混合文本，自动提取链接和提取码）...",
         key="user_input"
     )
 
-    col1, col2 = st.columns([1, 6])
-    
-    with col1:
+    col_act1, col_act2 = st.columns([1, 5])
+    with col_act1:
         start_process = st.button("🚀 开始处理", type="primary", use_container_width=True)
-    
-    with col2:
-        st.button("🗑️ 一键清除", on_click=clear_text)
+    with col_act2:
+        st.button("🗑️ 清空", on_click=clear_text)
 
     if start_process:
         if not input_text:
             st.warning("请先输入文本")
             st.stop()
+            
+        if not user_cookie:
+            st.error("❌ 缺少 Cookie，无法进行操作。")
+            st.stop()
 
         processed_text = clean_quark_links(input_text)
-        network = Network()
+        
+        # 初始化网络类，使用侧边栏（或Secrets）里的 Cookie
+        network = Network(user_cookie)
 
-        with st.status("正在自动化处理...", expanded=False) as status:
-            token = network.get_bdstoken()
-            if isinstance(token, int):
-                status.update(label=f"❌ Cookie 无效 (代码: {token})", state="error")
-                st.stop()
-            network.bdstoken = token
+        # 验证 Token
+        token = network.get_bdstoken()
+        if isinstance(token, int):
+            st.error(f"❌ Cookie 无效或已过期 (Error: {token})")
+            st.sidebar.error("Cookie 失效，请更新")
+            st.stop()
+        network.bdstoken = token
 
-            link_regex = re.compile(r'(https?://pan\.baidu\.com/s/[a-zA-Z0-9_\-]+(?:\?pwd=[a-zA-Z0-9]+)?)')
-            matches = list(link_regex.finditer(processed_text))
+        # 查找链接
+        link_regex = re.compile(r'(https?://pan\.baidu\.com/s/[a-zA-Z0-9_\-]+(?:\?pwd=[a-zA-Z0-9]+)?)')
+        matches = list(link_regex.finditer(processed_text))
 
-            if not matches:
-                status.update(label="⚠️ 未找到百度网盘链接", state="complete")
-                st.stop()
+        if not matches:
+            st.info("⚠️ 文本中未找到百度网盘链接")
+            st.stop()
 
-            final_text = processed_text
-            success_count = 0
+        # 准备进度显示
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        final_text = processed_text
+        success_count = 0
+        total_links = len(matches)
 
-            # === 修改点2：在循环开始前，统一创建一次根目录 ===
-            # 这样只执行一次，如果已存在就不会重复触发百度的重命名机制
-            network.create_dir(FIXED_SAVE_PATH)
+        # === 关键修正：在循环前只创建一次根目录 ===
+        network.create_dir(FIXED_SAVE_PATH)
 
-            for match in reversed(matches):
-                st.divider()
-                new_link = process_single_link(network, match, processed_text, FIXED_SAVE_PATH)
+        # 使用折叠框显示详细日志
+        with st.expander("📜 处理日志详情 (点击展开)", expanded=True):
+            for i, match in enumerate(reversed(matches)):
+                status_text.text(f"正在处理链接 {i+1}/{total_links}...")
+                progress_bar.progress((i + 1) / total_links)
+                
+                # 为每个链接创建一个小的容器显示状态
+                log_col1, log_col2 = st.columns([3, 1])
+                with log_col1:
+                    new_link = process_single_link(network, match, processed_text, FIXED_SAVE_PATH, st)
+                
                 if new_link:
                     start, end = match.span()
                     final_text = final_text[:start] + new_link + final_text[end:]
                     success_count += 1
 
-            if success_count > 0:
-                status.update(label=f"✅ 完成！处理了 {success_count} 个链接", state="complete")
-            else:
-                status.update(label="⚠️ 完成，但无成功链接", state="error")
+        progress_bar.empty()
+        status_text.empty()
+
+        # --- 结果展示区 ---
+        st.divider()
+        
+        # 显示统计指标
+        m1, m2, m3 = st.columns(3)
+        m1.metric("总链接数", total_links)
+        m2.metric("成功转存", success_count, delta_color="normal")
+        m3.metric("失败/跳过", total_links - success_count, delta_color="inverse")
 
         if success_count > 0:
-            st.subheader("🎉 处理结果")
-            
-            st.text_area("结果内容", value=final_text, height=300, label_visibility="collapsed")
+            st.success("🎉 处理完成！")
+            st.text_area("✨ 最终结果 (可直接编辑)", value=final_text, height=250)
             components.html(create_copy_button_html(final_text), height=60)
-
+        else:
+            st.error("⚠️ 处理完成，但没有生成新的链接。")
 
 if __name__ == '__main__':
     main()
