@@ -350,7 +350,7 @@ def clear_text():
     st.session_state["link_input"] = ""
 
 def main():
-    st.title("网盘转存助手")
+    # st.title("网盘转存助手")
     
     with st.sidebar:
         st.header("⚙️ 账号配置")
