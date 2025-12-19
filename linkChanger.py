@@ -59,7 +59,6 @@ st.markdown("""
     .quark-tag { background-color: #0088ff; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
     .baidu-tag { background-color: #ff4d4f; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
     .inject-tag { background-color: #ff9900; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
-    /* 优化时间显示样式 */
     .time-tag { color: #888; font-size: 0.85em; margin-left: 8px; font-family: monospace; }
     </style>
 """, unsafe_allow_html=True)
@@ -67,7 +66,6 @@ st.markdown("""
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
 
 def get_time_diff(start_time):
-    """计算耗时并格式化"""
     diff = time.time() - start_time
     return f"{diff:.2f}s"
 
@@ -218,13 +216,19 @@ class QuarkEngine:
                 new_fid = r.json()['data']['list'][0]['fid']
         except: pass
         
-        if not new_fid: return None, "未找到转存文件", None
+        # ⚠️ 关键修改：如果已经转存成功但没找到文件 ID，也要返回提示，而不是 Unknown Error
+        if not new_fid: return None, "✅ 已存入网盘 (但无法获取文件ID，未分享)", None
 
-        # 6. Share
+        # 6. Share (增加异常处理)
         share_data = {"fid_list": [new_fid], "title": first_name, "url_type": 1, "expired_type": 1}
         try:
             r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share", json=share_data, params=self._params())
-            share_task_id = r.json().get('data', {}).get('task_id')
+            res = r.json()
+            # 处理分享频率限制
+            if res.get('code') != 0 and res.get('code') != 'OK':
+                return None, f"✅ 已存入网盘 (但分享被拦截: {res.get('message')})", None
+                
+            share_task_id = res.get('data', {}).get('task_id')
             
             await asyncio.sleep(0.5)
             params = self._params()
@@ -234,7 +238,7 @@ class QuarkEngine:
             
             r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share/password", json={"share_id": share_id}, params=self._params())
             return r.json()['data']['share_url'], "成功", new_fid
-        except: return None, "分享创建失败", None
+        except: return None, "✅ 已存入网盘 (但分享创建异常)", None
 
 # ==========================================
 # 3. 百度引擎 (Sync)
@@ -280,7 +284,6 @@ class BaiduEngine:
         clean_url = url.split('?')[0]
         folder_name = url_info.get('name', 'Temp')
 
-        # 1. Verify
         if pwd:
             surl = re.search(r'(?:surl=|/s/1|/s/)([\w\-]+)', clean_url)
             if not surl: return None, "URL格式错误", None
@@ -292,7 +295,6 @@ class BaiduEngine:
             else:
                 return None, "提取码错误", None
 
-        # 2. Get FSID
         content = self.s.get(clean_url, headers=self.headers, verify=False).text
         try:
             shareid = re.search(r'"shareid":(\d+?),', content).group(1)
@@ -301,7 +303,6 @@ class BaiduEngine:
             if not fs_id_list: return None, "无文件", None
         except: return None, "页面解析失败", None
 
-        # 3. Path
         if is_inject:
             save_path = root_path
         else:
@@ -310,7 +311,6 @@ class BaiduEngine:
             save_path = f"{root_path}/{final_folder}"
             self.create_dir(save_path) 
 
-        # 4. Transfer
         r = self.s.post('https://pan.baidu.com/share/transfer', 
                         params={'shareid': shareid, 'from': uk, 'bdstoken': self.bdstoken},
                         data={'fsidlist': f"[{','.join(fs_id_list)}]", 'path': save_path}, headers=self.headers, verify=False)
@@ -323,14 +323,13 @@ class BaiduEngine:
 
         if is_inject: return "INJECT_OK", "成功", save_path
 
-        # 5. Share
         r = self.s.get('https://pan.baidu.com/api/list', params={'dir': root_path, 'bdstoken': self.bdstoken}, headers=self.headers, verify=False)
         target_fsid = None
         for item in r.json().get('list', []):
             if item['server_filename'] == final_folder:
                 target_fsid = item['fs_id']; break
         
-        if not target_fsid: return None, "获取新目录失败", None
+        if not target_fsid: return None, "✅ 已存入网盘 (获取目录失败)", None
 
         new_pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
         r = self.s.post('https://pan.baidu.com/share/set', 
@@ -339,10 +338,10 @@ class BaiduEngine:
         
         if r.json()['errno'] == 0:
             return f"{r.json()['link']}?pwd={new_pwd}", "成功", save_path 
-        return None, "分享创建失败", None
+        return None, "✅ 已存入网盘 (分享失败)", None
 
 # ==========================================
-# 4. 主逻辑 (计时版)
+# 4. 主逻辑 (冷却版)
 # ==========================================
 def clear_text():
     st.session_state["link_input"] = ""
@@ -415,7 +414,6 @@ def main():
                         st.error("夸克链接：未配置Cookie，跳过")
                     else:
                         st.write("--- ☁️ **开始处理夸克链接** ---")
-                        # 登录计时
                         t0 = time.time()
                         user = await q_engine.check_login()
                         if not user:
@@ -423,7 +421,6 @@ def main():
                         else:
                             st.write(f"✅ 登录成功: {user} <span class='time-tag'>(⏱️ {get_time_diff(t0)})</span>", unsafe_allow_html=True)
                             
-                            # 目录计时
                             t0 = time.time()
                             root_fid = await q_engine.get_folder_id(QUARK_SAVE_PATH)
                             if not root_fid:
@@ -436,15 +433,12 @@ def main():
                                     raw_url = match.group(1)
                                     st.write(f"🔄 **[{current_idx}/{total_tasks}]** 处理: `{raw_url}`")
                                     
-                                    # 转存计时
                                     t_task = time.time()
                                     new_url, msg, new_fid = await q_engine.process_url(raw_url, root_fid)
                                     t_task_end = get_time_diff(t_task)
                                     
                                     if new_url:
                                         status_msg = f"<span class='quark-tag'>夸克</span> ✅ 成功 <span class='time-tag'>(⏱️ {t_task_end})</span>"
-                                        
-                                        # 植入计时
                                         if FIXED_IMAGE_CONFIG['quark']['enabled'] and new_fid:
                                             t_img = time.time()
                                             res_url, res_msg, _ = await q_engine.process_url(
@@ -452,13 +446,22 @@ def main():
                                             if res_url == "INJECT_OK": 
                                                 status_msg += f" <span class='inject-tag'>+图片</span> <span class='time-tag'>({get_time_diff(t_img)})</span>"
                                             else: 
-                                                st.warning(f"  ↳ ❌ 图片失败: {res_msg} ({get_time_diff(t_img)})")
+                                                st.warning(f"  ↳ ❌ 图片失败: {res_msg}")
 
                                         final_text = final_text.replace(raw_url, new_url) 
                                         st.markdown(status_msg, unsafe_allow_html=True)
                                         success_count += 1
                                     else:
-                                        st.markdown(f"<span class='quark-tag'>夸克</span> ❌ 失败: {msg} <span class='time-tag'>({t_task_end})</span>", unsafe_allow_html=True)
+                                        # 区分完全失败 vs 存入成功分享失败
+                                        if "✅" in msg:
+                                            st.warning(f"<span class='quark-tag'>夸克</span> {msg} <span class='time-tag'>({t_task_end})</span>", unsafe_allow_html=True)
+                                        else:
+                                            st.error(f"<span class='quark-tag'>夸克</span> ❌ 失败: {msg} <span class='time-tag'>({t_task_end})</span>", unsafe_allow_html=True)
+
+                                    # 🟢 增加随机冷却，防止频控
+                                    if current_idx < total_tasks:
+                                        sleep_time = random.uniform(2, 4)
+                                        await asyncio.sleep(sleep_time)
 
                 # --- 百度处理 ---
                 if b_matches:
@@ -472,10 +475,9 @@ def main():
                         else:
                             st.write(f"✅ 登录成功 <span class='time-tag'>(⏱️ {get_time_diff(t0)})</span>", unsafe_allow_html=True)
                             
-                            t0 = time.time()
                             if not b_engine.check_dir_exists(BAIDU_SAVE_PATH):
                                 b_engine.create_dir(BAIDU_SAVE_PATH)
-                            st.write(f"📁 目录就绪 <span class='time-tag'>(⏱️ {get_time_diff(t0)})</span>", unsafe_allow_html=True)
+                            st.write(f"📁 目录就绪", unsafe_allow_html=True)
                             
                             for match in b_matches:
                                 current_idx += 1
@@ -503,13 +505,20 @@ def main():
                                         if img_res_url == "INJECT_OK": 
                                             status_msg += f" <span class='inject-tag'>+图片</span> <span class='time-tag'>({get_time_diff(t_img)})</span>"
                                         else: 
-                                            st.warning(f"  ↳ ❌ 图片失败: {img_msg} ({get_time_diff(t_img)})")
+                                            st.warning(f"  ↳ ❌ 图片失败: {img_msg}")
 
                                     final_text = final_text.replace(raw_url, new_url)
                                     st.markdown(status_msg, unsafe_allow_html=True)
                                     success_count += 1
                                 else:
-                                    st.markdown(f"<span class='baidu-tag'>百度</span> ❌ 失败: {msg} <span class='time-tag'>({t_task_end})</span>", unsafe_allow_html=True)
+                                    if "✅" in msg:
+                                        st.warning(f"<span class='baidu-tag'>百度</span> {msg} <span class='time-tag'>({t_task_end})</span>", unsafe_allow_html=True)
+                                    else:
+                                        st.error(f"<span class='baidu-tag'>百度</span> ❌ 失败: {msg} <span class='time-tag'>({t_task_end})</span>", unsafe_allow_html=True)
+
+                                # 🟢 增加随机冷却
+                                if current_idx < total_tasks:
+                                    time.sleep(random.uniform(2, 4))
 
                 if q_engine: await q_engine.close()
                 status.update(label="处理完成", state="complete", expanded=False)
