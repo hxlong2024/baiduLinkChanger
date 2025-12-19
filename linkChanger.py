@@ -25,7 +25,7 @@ def get_secret(section, key, default=""):
     except: pass
     return default
 
-# 图片植入配置 (建议在 .streamlit/secrets.toml 中配置)
+# 图片植入配置
 FIXED_IMAGE_CONFIG = {
     "quark": {
         "url": get_secret("quark", "img_url"),
@@ -177,7 +177,7 @@ class QuarkEngine:
             first_name = items[0]['file_name']
         except: return None, "获取详情失败", None
 
-        # 3. 转存 (核心步骤)
+        # 3. 转存
         save_data = {"fid_list": source_fids, "fid_token_list": source_tokens, "to_pdir_fid": target_fid, 
                      "pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "scene": "link"}
         try:
@@ -186,11 +186,10 @@ class QuarkEngine:
             task_id = r.json().get('data', {}).get('task_id')
         except: return None, "转存请求失败", None
 
-        # 如果是植入模式，只要转存指令发送成功即可，无需等待和分享
         if is_inject:
             return "INJECT_OK", "植入成功", None
 
-        # 4. 等待转存完成
+        # 4. 等待转存
         for _ in range(8):
             await asyncio.sleep(1)
             try:
@@ -200,7 +199,7 @@ class QuarkEngine:
                 if r.json().get('data', {}).get('status') == 2: break
             except: pass
 
-        # 5. 查找刚才转存的文件/文件夹 ID
+        # 5. 查找新文件
         await asyncio.sleep(1.5)
         new_fid = None
         params = self._params()
@@ -229,8 +228,6 @@ class QuarkEngine:
             share_id = r.json().get('data', {}).get('share_id')
             
             r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share/password", json={"share_id": share_id}, params=self._params())
-            
-            # 返回: 链接, 消息, 新文件夹ID(用于植入)
             return r.json()['data']['share_url'], "成功", new_fid
         except: return None, "分享创建失败", None
 
@@ -300,32 +297,28 @@ class BaiduEngine:
         except: return None, "页面解析失败", None
 
         # 3. 准备路径
-        # 如果是植入模式，直接存入 root_path (即刚才新建的文件夹)
         if is_inject:
             save_path = root_path
         else:
-            # 如果是主任务，新建一个带随机后缀的文件夹
             safe_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
             final_folder = f"{folder_name}_{safe_suffix}"
             save_path = f"{root_path}/{final_folder}"
             self.create_dir(save_path) 
 
-        # 4. 转存 (Transfer)
+        # 4. 转存
         r = self.s.post('https://pan.baidu.com/share/transfer', 
                         params={'shareid': shareid, 'from': uk, 'bdstoken': self.bdstoken},
                         data={'fsidlist': f"[{','.join(fs_id_list)}]", 'path': save_path}, headers=self.headers, verify=False)
         
-        # 错误处理
         if r.json()['errno'] == 12: # 文件已存在
              if is_inject: return "INJECT_OK", "文件已存在", save_path
              return None, "转存失败(文件已存在)", None
         
         if r.json()['errno'] != 0: return None, f"转存失败({r.json()['errno']})", None
 
-        # 如果是植入模式，到这里就结束了
         if is_inject: return "INJECT_OK", "成功", save_path
 
-        # 5. 获取新文件夹 FSID 并分享
+        # 5. 分享
         r = self.s.get('https://pan.baidu.com/api/list', params={'dir': root_path, 'bdstoken': self.bdstoken}, headers=self.headers, verify=False)
         target_fsid = None
         for item in r.json().get('list', []):
@@ -350,7 +343,7 @@ def clear_text():
     st.session_state["link_input"] = ""
 
 def main():
-    # st.title("网盘转存助手")
+    st.title("网盘转存助手")
     
     with st.sidebar:
         st.header("⚙️ 账号配置")
@@ -381,7 +374,7 @@ def main():
                 FIXED_IMAGE_CONFIG['baidu']['pwd'] = b_img_pwd
                 FIXED_IMAGE_CONFIG['baidu']['enabled'] = True
 
-    #st.info("💡 提示：支持混合输入夸克和百度链接，程序会自动识别并分类处理。")
+    st.info("💡 提示：支持混合输入夸克和百度链接，程序会自动识别并分类处理。")
     
     input_text = st.text_area("📝 请在此处粘贴链接文本...", height=200, key="link_input")
 
@@ -391,7 +384,6 @@ def main():
         if not input_text.strip():
             st.toast("请输入内容", icon="⚠️"); return
 
-        # 识别链接
         quark_regex = re.compile(r'(https://pan\.quark\.cn/s/[a-zA-Z0-9]+(?:\?pwd=[a-zA-Z0-9]+)?)')
         baidu_regex = re.compile(r'(https?://pan\.baidu\.com/s/[a-zA-Z0-9_\-]+(?:\?pwd=[a-zA-Z0-9]+)?)')
         
@@ -406,8 +398,10 @@ def main():
         b_engine = BaiduEngine(baidu_cookie) if b_matches else None
 
         async def run_process():
+            start_time = datetime.now() # 开始计时
             final_text = input_text
             success_count = 0
+            current_idx = 0 # 当前任务计数器
             
             with st.status(f"正在处理 {total_tasks} 个任务...", expanded=True) as status:
                 
@@ -427,26 +421,20 @@ def main():
                                 st.error(f"❌ 夸克目录不存在: {QUARK_SAVE_PATH}")
                             else:
                                 for match in q_matches:
+                                    current_idx += 1
                                     raw_url = match.group(1)
-                                    st.write(f"🔄 处理: {raw_url}")
-                                    # 注意：new_fid 返回的是刚才创建的子文件夹 ID
+                                    # 显示进度：[1/5] 处理：链接...
+                                    st.write(f"🔄 **[{current_idx}/{total_tasks}]** 正在处理: `{raw_url}`")
+                                    
                                     new_url, msg, new_fid = await q_engine.process_url(raw_url, root_fid)
                                     
                                     if new_url:
                                         status_msg = f"<span class='quark-tag'>夸克</span> ✅ 成功"
-                                        
-                                        # === 植入逻辑 ===
                                         if FIXED_IMAGE_CONFIG['quark']['enabled'] and new_fid:
-                                            st.write("  ↳ 🖼️ 正在植入图片...")
                                             res_url, res_msg, _ = await q_engine.process_url(
-                                                FIXED_IMAGE_CONFIG['quark']['url'], 
-                                                new_fid, 
-                                                is_inject=True
-                                            )
-                                            if res_url == "INJECT_OK":
-                                                status_msg += " <span class='inject-tag'>+图片</span>"
-                                            else:
-                                                st.warning(f"  ↳ ❌ 图片植入失败: {res_msg}")
+                                                FIXED_IMAGE_CONFIG['quark']['url'], new_fid, is_inject=True)
+                                            if res_url == "INJECT_OK": status_msg += " <span class='inject-tag'>+图片</span>"
+                                            else: st.warning(f"  ↳ ❌ 图片失败: {res_msg}")
 
                                         final_text = final_text.replace(raw_url, new_url) 
                                         st.markdown(status_msg, unsafe_allow_html=True)
@@ -468,31 +456,26 @@ def main():
                                 b_engine.create_dir(BAIDU_SAVE_PATH)
                             
                             for match in b_matches:
+                                current_idx += 1
                                 raw_url = match.group(1)
                                 pwd_match = re.search(r'(?:\?pwd=|&pwd=|\s+|提取码[:：]?\s*)([a-zA-Z0-9]{4})', match.group(0))
                                 pwd = pwd_match.group(1) if pwd_match else ""
                                 name = extract_smart_folder_name(input_text, match.start())
                                 
-                                st.write(f"🔄 处理: {name} | {raw_url}")
+                                # 显示进度：[2/5] 处理：文件名...
+                                st.write(f"🔄 **[{current_idx}/{total_tasks}]** 正在处理: `{name}`")
                                 
-                                # process_url 返回的 save_path 是刚才创建的子文件夹路径
                                 new_url, msg, new_dir_path = b_engine.process_url({'url': raw_url, 'pwd': pwd, 'name': name}, BAIDU_SAVE_PATH)
                                 
                                 if new_url:
                                     status_msg = f"<span class='baidu-tag'>百度</span> ✅ 成功"
-                                    
-                                    # === 植入逻辑 ===
                                     if FIXED_IMAGE_CONFIG['baidu']['enabled'] and new_dir_path:
-                                        st.write("  ↳ 🖼️ 正在植入图片...")
                                         img_res_url, img_msg, _ = b_engine.process_url({
                                             'url': FIXED_IMAGE_CONFIG['baidu']['url'],
                                             'pwd': FIXED_IMAGE_CONFIG['baidu']['pwd']
                                         }, new_dir_path, is_inject=True)
-                                        
-                                        if img_res_url == "INJECT_OK":
-                                            status_msg += " <span class='inject-tag'>+图片</span>"
-                                        else:
-                                            st.warning(f"  ↳ ❌ 图片植入失败: {img_msg}")
+                                        if img_res_url == "INJECT_OK": status_msg += " <span class='inject-tag'>+图片</span>"
+                                        else: st.warning(f"  ↳ ❌ 图片失败: {img_msg}")
 
                                     final_text = final_text.replace(raw_url, new_url)
                                     st.markdown(status_msg, unsafe_allow_html=True)
@@ -503,9 +486,17 @@ def main():
                 if q_engine: await q_engine.close()
                 status.update(label="处理完成", state="complete", expanded=False)
             
+            end_time = datetime.now()
+            duration = end_time - start_time # 计算耗时
+
             if success_count > 0:
                 st.balloons()
-                st.success(f"✨ 成功转存 {success_count}/{total_tasks} 个链接")
+                # 显示成功统计信息
+                st.success(f"""
+                ✨ **处理完成！**
+                - 成功/总数: **{success_count}/{total_tasks}**
+                - 总耗时: **{duration}**
+                """)
                 st.text_area("⬇️ 最终结果", value=final_text, height=250)
                 components.html(create_copy_button_html(final_text), height=80)
             else:
