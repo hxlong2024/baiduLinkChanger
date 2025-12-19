@@ -30,8 +30,8 @@ HEADERS = {
     'Referer': 'https://pan.baidu.com',
 }
 
-# 默认保存路径 (固定路径，如果存在则直接存入，不会创建副本)
-FIXED_SAVE_PATH = "我的资源/LinkChanger"
+# 默认保存路径
+FIXED_SAVE_PATH = "/我的资源/LinkChanger"
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
 
@@ -197,6 +197,25 @@ class Network:
     def get_transfer_params(self, url: str) -> bytes:
         return self.s.get(url, headers=self.headers, verify=False).content
 
+    # === 新增：检查目录是否存在 ===
+    @retry(stop_max_attempt_number=3)
+    def check_dir_exists(self, path: str) -> bool:
+        """
+        检查目录是否存在，避免重复创建导致生成副本
+        """
+        if not path.startswith("/"): path = "/" + path
+        url = f'{BASE_URL}/api/list'
+        # 尝试列出该目录下的文件，如果目录存在，errno应为0
+        params = {'dir': path, 'bdstoken': self.bdstoken, 'start': 0, 'limit': 1}
+        try:
+            r = self.s.get(url, params=params, headers=self.headers, verify=False)
+            data = r.json()
+            if data.get('errno') == 0:
+                return True # 目录存在
+            return False
+        except:
+            return False
+
     @retry(stop_max_attempt_number=3)
     def create_dir(self, path: str) -> int:
         url = f'{BASE_URL}/api/create'
@@ -284,7 +303,7 @@ def process_single_link(network, match, full_text, root_path, log_container):
     final_folder_name = f"{folder_name}_{safe_suffix}"
     full_save_path = f"{root_path}/{final_folder_name}"
 
-    # 1. 创建子目录 (如果子目录重名，才会尝试使用时间戳命名子目录，而不是根目录)
+    # 1. 创建子目录 (对于具体的资源子目录，仍然尝试创建)
     create_res = network.create_dir(full_save_path)
     if create_res != 0 and create_res != -8:
         # 重试策略
@@ -298,7 +317,6 @@ def process_single_link(network, match, full_text, root_path, log_container):
     transfer_res = network.transfer_file(params, full_save_path)
     if transfer_res != 0:
         log_container.error(f"❌ 转存失败 (Code: {transfer_res})，清理空目录...")
-        # 失败时立即删除空文件夹
         network.delete_file(full_save_path)
         return None
 
@@ -322,13 +340,11 @@ def clear_text():
     st.session_state["user_input"] = ""
 
 def main():
-        # --- 侧边栏配置区 ---
+    # --- 侧边栏配置区 ---
     with st.sidebar:
         st.header("⚙️ 配置面板")
         
-        # 1. 智能读取 Secrets (支持多种格式)
         default_cookie = ""
-        
         if "baidu" in st.secrets and "cookie" in st.secrets["baidu"]:
             default_cookie = st.secrets["baidu"]["cookie"]
         elif "BD_COOKIE" in st.secrets:
@@ -336,7 +352,6 @@ def main():
         elif "cookie" in st.secrets:
             default_cookie = st.secrets["cookie"]
             
-        # 2. 显示输入框 (已修改：移除 type="password"，现在直接显示文本)
         user_cookie = st.text_input(
             "百度 Cookie (BDUSS等)",
             value=default_cookie,
@@ -370,10 +385,8 @@ def main():
 
         processed_text = clean_quark_links(input_text)
         
-        # 初始化网络类
         network = Network(user_cookie)
 
-        # 验证 Token
         token = network.get_bdstoken()
         if isinstance(token, int):
             st.error(f"❌ Cookie 无效或已过期 (Error: {token})")
@@ -381,7 +394,6 @@ def main():
             st.stop()
         network.bdstoken = token
 
-        # 查找链接
         link_regex = re.compile(r'(https?://pan\.baidu\.com/s/[a-zA-Z0-9_\-]+(?:\?pwd=[a-zA-Z0-9]+)?)')
         matches = list(link_regex.finditer(processed_text))
 
@@ -389,26 +401,29 @@ def main():
             st.info("⚠️ 文本中未找到百度网盘链接")
             st.stop()
 
-        # 准备进度显示
         progress_bar = st.progress(0)
         status_text = st.empty()
         final_text = processed_text
         success_count = 0
         total_links = len(matches)
 
-        # === 目录逻辑确认 ===
-        # 这里尝试创建 FIXED_SAVE_PATH ("我的资源/LinkChanger")
-        # 如果文件夹已存在，百度接口返回 errno -8，代码会自动忽略，继续使用该目录
-        # 绝对不会因为存在而新建一个 "LinkChanger_时间戳" 的根目录
-        network.create_dir(FIXED_SAVE_PATH)
+        # === 关键修正 ===
+        # 1. 先检查根目录是否存在
+        # 2. 只有当它 *不存在* 时，才调用 create_dir
+        # 3. 这样就避免了百度服务器因为“重复创建”而生成带时间戳的副本
+        status_text.text("正在检查根目录状态...")
+        if not network.check_dir_exists(FIXED_SAVE_PATH):
+            status_text.text(f"正在创建根目录: {FIXED_SAVE_PATH}")
+            network.create_dir(FIXED_SAVE_PATH)
+        else:
+            # 目录已存在，什么都不做，直接开始处理文件
+            pass
 
-        # 使用折叠框显示详细日志
         with st.expander("📜 处理日志详情 (点击展开)", expanded=True):
             for i, match in enumerate(reversed(matches)):
                 status_text.text(f"正在处理链接 {i+1}/{total_links}...")
                 progress_bar.progress((i + 1) / total_links)
                 
-                # 为每个链接创建一个小的容器显示状态
                 log_col1, log_col2 = st.columns([3, 1])
                 with log_col1:
                     new_link = process_single_link(network, match, processed_text, FIXED_SAVE_PATH, st)
@@ -421,10 +436,8 @@ def main():
         progress_bar.empty()
         status_text.empty()
 
-        # --- 结果展示区 ---
         st.divider()
         
-        # 显示统计指标
         m1, m2, m3 = st.columns(3)
         m1.metric("总链接数", total_links)
         m2.metric("成功转存", success_count, delta_color="normal")
