@@ -8,7 +8,7 @@ import time
 import random
 import string
 import json
-from datetime import datetime, timedelta, timezone # 引入时区处理
+from datetime import datetime, timedelta, timezone
 from typing import Union, List, Any
 from retrying import retry
 
@@ -64,6 +64,61 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# 注入“回到顶部”悬浮球
+st.markdown("""
+    <style>
+    #scrollTopBtn {
+        display: none; /* 默认隐藏，JS控制显示 */
+        position: fixed;
+        bottom: 80px; /* 距离底部距离，避开手机导航条 */
+        right: 20px;  /* 距离右侧距离 */
+        z-index: 9999;
+        font-size: 24px;
+        border: none;
+        outline: none;
+        background-color: #ff4b4b; /* Streamlit 红 */
+        color: white;
+        cursor: pointer;
+        padding: 0;
+        border-radius: 50%; /* 圆形 */
+        width: 50px;
+        height: 50px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        transition: opacity 0.3s, transform 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #scrollTopBtn:hover {
+        background-color: #d93838;
+        transform: scale(1.1);
+    }
+    </style>
+    
+    <div id="scrollTopBtn" onclick="scrollToTop()" title="回到顶部">
+        ⇧
+    </div>
+
+    <script>
+    // 滚动监听
+    window.onscroll = function() {scrollFunction()};
+
+    function scrollFunction() {
+        var btn = document.getElementById("scrollTopBtn");
+        if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
+            btn.style.display = "flex"; // 滑动超过300px显示
+        } else {
+            btn.style.display = "none";
+        }
+    }
+
+    // 回到顶部函数
+    function scrollToTop() {
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+    </script>
+""", unsafe_allow_html=True)
+
 # 初始化状态
 if 'process_logs' not in st.session_state:
     st.session_state.process_logs = []
@@ -76,7 +131,6 @@ if 'task_summary' not in st.session_state:
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
 
-# 获取北京时间字符串
 def get_beijing_time_str():
     utc_now = datetime.now(timezone.utc)
     beijing_now = utc_now + timedelta(hours=8)
@@ -177,7 +231,6 @@ class QuarkEngine:
             passcode = match.group(1) if match else ""
         except: return None, "解析异常", None
 
-        # 1. Token
         try:
             r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share/sharepage/token", 
                                      json={"pwd_id": pwd_id, "passcode": passcode}, params=self._params())
@@ -185,7 +238,6 @@ class QuarkEngine:
             if not stoken: return None, "提取码失效", None
         except: return None, "Token请求失败", None
 
-        # 2. Detail
         params = self._params()
         params.update({"pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "_page": 1, "_size": 50})
         try:
@@ -197,7 +249,6 @@ class QuarkEngine:
             first_name = items[0]['file_name']
         except: return None, "获取详情失败", None
 
-        # 3. Transfer
         save_data = {"fid_list": source_fids, "fid_token_list": source_tokens, "to_pdir_fid": target_fid, 
                      "pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "scene": "link"}
         try:
@@ -208,7 +259,6 @@ class QuarkEngine:
 
         if is_inject: return "INJECT_OK", "植入成功", None
 
-        # 4. Wait
         for _ in range(8):
             await asyncio.sleep(1)
             try:
@@ -218,7 +268,6 @@ class QuarkEngine:
                 if r.json().get('data', {}).get('status') == 2: break
             except: pass
 
-        # 5. Find New
         await asyncio.sleep(1.5)
         new_fid = None
         params = self._params()
@@ -234,7 +283,6 @@ class QuarkEngine:
         
         if not new_fid: return None, "✅ 已存入网盘 (但无法获取文件ID，未分享)", None
 
-        # 6. Share
         share_data = {"fid_list": [new_fid], "title": first_name, "url_type": 1, "expired_type": 1}
         try:
             r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share", json=share_data, params=self._params())
@@ -254,7 +302,7 @@ class QuarkEngine:
         except: return None, "✅ 已存入网盘 (但分享创建异常)", None
 
 # ==========================================
-# 3. 百度引擎 (Sync - 增强稳定性版)
+# 3. 百度引擎 (Sync - 增强版)
 # ==========================================
 class BaiduEngine:
     def __init__(self, cookies: str):
@@ -302,7 +350,6 @@ class BaiduEngine:
         folder_name = url_info.get('name', 'Temp')
 
         try:
-            # 1. Verify
             if pwd:
                 surl = re.search(r'(?:surl=|/s/1|/s/)([\w\-]+)', clean_url)
                 if not surl: return None, "URL格式错误", None
@@ -314,7 +361,6 @@ class BaiduEngine:
                 else:
                     return None, "提取码错误", None
 
-            # 2. Get FSID
             content = self.s.get(clean_url, headers=self.headers, verify=False).text
             try:
                 shareid = re.search(r'"shareid":(\d+?),', content).group(1)
@@ -323,7 +369,6 @@ class BaiduEngine:
                 if not fs_id_list: return None, "无文件", None
             except: return None, "页面解析失败", None
 
-            # 3. Path
             if is_inject:
                 save_path = root_path
             else:
@@ -332,7 +377,6 @@ class BaiduEngine:
                 save_path = f"{root_path}/{final_folder}"
                 self.create_dir(save_path) 
 
-            # 4. Transfer
             try:
                 r = self.s.post('https://pan.baidu.com/share/transfer', 
                                 params={'shareid': shareid, 'from': uk, 'bdstoken': self.bdstoken},
@@ -348,14 +392,10 @@ class BaiduEngine:
             
             if res.get('errno') != 0: 
                 errno = res.get('errno')
-                err_msg = f"转存失败({errno})"
-                if errno == -10: err_msg = "容量不足或文件数超限"
-                if errno == -33: err_msg = "文件数超出限制(非会员500)"
-                return None, err_msg, None
+                return None, f"转存失败({errno})", None
 
             if is_inject: return "INJECT_OK", "成功", save_path
 
-            # 5. Share
             r = self.s.get('https://pan.baidu.com/api/list', params={'dir': root_path, 'bdstoken': self.bdstoken}, headers=self.headers, verify=False)
             target_fsid = None
             for item in r.json().get('list', []):
@@ -377,7 +417,7 @@ class BaiduEngine:
             return None, f"发生异常: {str(e)[:20]}...", None
 
 # ==========================================
-# 4. 主逻辑 (北京时间+无图标版)
+# 4. 主逻辑
 # ==========================================
 def clear_state():
     st.session_state.link_input = ""
@@ -387,7 +427,7 @@ def clear_state():
     st.session_state.task_summary = {}
 
 def add_log(message: str, is_error=False):
-    timestamp = get_beijing_time_str() # 使用北京时间
+    timestamp = get_beijing_time_str() # 北京时间
     log_entry = f"`{timestamp}` {message}"
     st.session_state.process_logs.append(log_entry)
 
@@ -560,7 +600,6 @@ def main():
                 st.markdown(log)
 
     if st.session_state.final_result_cache:
-        # 安全获取耗时
         duration_str = st.session_state.task_summary.get('duration', '0s')
         if isinstance(duration_str, str) and len(duration_str) > 4:
             safe_duration = duration_str[:-4]
