@@ -51,6 +51,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 【关键点 1】在页面最顶部埋一个“锚点”，ID 叫 top-anchor
+# top: -100px 是为了留出一点缓冲空间，防止标题被遮挡
+st.markdown('<div id="top-anchor" style="position:absolute; top:-100px; visibility:hidden;"></div>', unsafe_allow_html=True)
+
 st.markdown("""
     <style>
     .stTextArea textarea { font-family: 'Source Code Pro', monospace; font-size: 14px; }
@@ -64,96 +68,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 📱 终极修复版：悬浮球 (位置上移 + 暴力层级 + 自动重试绑定)
-st.markdown("""
-    <style>
-    #scrollTopBtn {
-        display: none; 
-        position: fixed;
-        bottom: 120px; /* ⬆️ 上移到 120px，避开手机底部工具栏 */
-        right: 20px;
-        z-index: 2147483647; /* 🔝 层级拉满，保证在最上层 */
-        font-size: 22px;
-        background-color: #ff4b4b;
-        color: white;
-        cursor: pointer;
-        border-radius: 50%;
-        width: 50px;
-        height: 50px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-        align-items: center;
-        justify-content: center;
-        transition: all 0.3s ease;
-        user-select: none;
-        -webkit-tap-highlight-color: transparent;
-        opacity: 0.9;
-    }
-    #scrollTopBtn:active {
-        transform: scale(0.9);
-        background-color: #d93838;
-    }
-    </style>
-    
-    <div id="scrollTopBtn" onclick="scrollToTop()">
-        ⬆️
-    </div>
-
-    <script>
-    // 持续尝试寻找滚动容器，直到找到为止 (适配 Streamlit 动态加载)
-    function attachScrollListener() {
-        // Streamlit 的主滚动容器通常是这个
-        const container = window.parent.document.querySelector('[data-testid="stAppViewContainer"]') || 
-                          document.querySelector('[data-testid="stAppViewContainer"]') ||
-                          document.body;
-        
-        const btn = document.getElementById("scrollTopBtn");
-        
-        if (container && btn) {
-            // 移除旧监听器防止重复
-            container.removeEventListener('scroll', checkScroll);
-            container.addEventListener('scroll', checkScroll);
-            
-            // 同时也监听 window 滚动 (双保险)
-            window.removeEventListener('scroll', checkScroll);
-            window.addEventListener('scroll', checkScroll);
-            
-            console.log("Scroll listener attached to:", container);
-            return true;
-        }
-        return false;
-    }
-
-    function checkScroll() {
-        const container = window.parent.document.querySelector('[data-testid="stAppViewContainer"]') || document.body;
-        const btn = document.getElementById("scrollTopBtn");
-        
-        // 只要任一地方检测到滚动超过 300px 就显示
-        if ((container.scrollTop > 300) || (window.scrollY > 300)) {
-            btn.style.display = "flex";
-        } else {
-            btn.style.display = "none";
-        }
-    }
-
-    function scrollToTop() {
-        const container = window.parent.document.querySelector('[data-testid="stAppViewContainer"]') || document.body;
-        
-        // 同时尝试滚动容器和窗口
-        if(container) container.scrollTo({top: 0, behavior: 'smooth'});
-        window.scrollTo({top: 0, behavior: 'smooth'});
-    }
-
-    // 每秒检查一次是否需要重新绑定 (防止页面刷新后失效)
-    setInterval(() => {
-        attachScrollListener();
-    }, 1000);
-    
-    // 立即尝试一次
-    setTimeout(attachScrollListener, 500);
-    </script>
-""", unsafe_allow_html=True)
-
-# 初始化状态
+# 初始化状态 (防丢失核心)
 if 'process_logs' not in st.session_state:
     st.session_state.process_logs = []
 if 'final_result_cache' not in st.session_state:
@@ -665,6 +580,41 @@ def main():
         st.balloons()
         st.text_area("⬇️ 最终结果 (已保存)", value=st.session_state.final_result_cache, height=250)
         components.html(create_copy_button_html(st.session_state.final_result_cache), height=80)
+
+# 【关键修复】在页面底部埋入“回到顶部按钮”代码，使用纯 CSS + HTML 锚点
+st.markdown("""
+    <style>
+    .back-to-top {
+        position: fixed;
+        bottom: 120px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        background-color: #FF4B4B;
+        border-radius: 50%;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+        z-index: 999999;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        opacity: 0.85;
+        
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: white !important;
+    }
+    .back-to-top:hover {
+        background-color: #D33030;
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    </style>
+    
+    <a href="#top-anchor" class="back-to-top" title="回到顶部">
+        ⇧
+    </a>
+""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
