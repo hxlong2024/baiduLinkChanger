@@ -51,8 +51,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 【关键点 1】在页面最顶部埋一个“锚点”，ID 叫 top-anchor
-# top: -100px 是为了留出一点缓冲空间，防止标题被遮挡
+# ⚓️ 顶部锚点 (这是“回到顶部”的目的地)
 st.markdown('<div id="top-anchor" style="position:absolute; top:-100px; visibility:hidden;"></div>', unsafe_allow_html=True)
 
 st.markdown("""
@@ -581,7 +580,7 @@ def main():
         st.text_area("⬇️ 最终结果 (已保存)", value=st.session_state.final_result_cache, height=250)
         components.html(create_copy_button_html(st.session_state.final_result_cache), height=80)
 
-# 【关键修复】在页面底部埋入“回到顶部按钮”代码，使用纯 CSS + HTML 锚点
+# 【优化后的悬浮按钮代码，SVG 图标，更圆润现代】
 st.markdown("""
     <style>
     .back-to-top {
@@ -598,23 +597,29 @@ st.markdown("""
         transition: all 0.3s ease;
         opacity: 0.85;
         
+        /* 弹性布局确保图标完美居中 */
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 24px;
-        color: white !important;
     }
     .back-to-top:hover {
         background-color: #D33030;
         opacity: 1;
         transform: scale(1.1);
     }
+    .back-to-top svg {
+        width: 28px;
+        height: 28px;
+        stroke: white; /* 强制图标为白色 */
+    }
     </style>
     
     <a href="#top-anchor" class="back-to-top" title="回到顶部">
-        ⇧
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18" />
+        </svg>
     </a>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
