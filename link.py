@@ -84,7 +84,7 @@ class JobManager:
         """type: info, success, error, quark, baidu"""
         if job_id in self.jobs:
             timestamp = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%H:%M:%S")
-            safe_message = html.escape(message) # 防止HTML破坏页面
+            safe_message = html.escape(message)
             self.jobs[job_id]["logs"].append({"time": timestamp, "msg": safe_message, "type": type})
 
     def update_progress(self, job_id, current, total):
@@ -100,7 +100,7 @@ class JobManager:
 job_manager = JobManager()
 
 # ==========================================
-# 2. 页面配置与极简样式
+# 2. 页面配置与样式
 # ==========================================
 st.set_page_config(
     page_title="网盘转存助手",
@@ -116,7 +116,6 @@ st.markdown("""
     .block-container { padding-top: 32px !important; padding-bottom: 3rem; }
     .stTextArea textarea { font-family: 'Source Code Pro', monospace; font-size: 14px; }
     
-    /* 极简日志样式 */
     .log-container {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         font-size: 13px;
@@ -148,14 +147,12 @@ st.markdown("""
         flex-grow: 1;
     }
     
-    /* 状态图标颜色 */
     .icon-success { color: #52c41a; margin-right: 6px; font-weight:bold; }
     .icon-error { color: #ff4d4f; margin-right: 6px; font-weight:bold; }
     .icon-quark { color: #1677ff; margin-right: 6px; font-weight:bold; }
     .icon-baidu { color: #ff4d4f; margin-right: 6px; font-weight:bold; }
     .icon-info { color: #8c8c8c; margin-right: 6px; font-weight:bold; }
     
-    /* 链接高亮样式 */
     .url-highlight {
         background: #f0f5ff;
         color: #2f54eb;
@@ -165,10 +162,18 @@ st.markdown("""
         font-size: 0.9em;
     }
 
-    .result-box { background: #fcfcfc; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-top: 20px; }
+    /* 🟡 修复2：增加下边距，防止挨太近 */
+    .result-box { 
+        background: #fcfcfc; 
+        border: 1px solid #eee; 
+        padding: 15px; 
+        border-radius: 8px; 
+        margin-top: 20px; 
+        margin-bottom: 25px; 
+    }
     
-    /* 状态点动画 */
-    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    .running-badge { color: #0088ff; font-weight: bold; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     .status-dot-green { display:inline-block; width:8px; height:8px; background:#52c41a; border-radius:50%; margin-right:6px; }
     .status-dot-red { display:inline-block; width:8px; height:8px; background:#ff4d4f; border-radius:50%; margin-right:6px; }
     .status-dot-gray { display:inline-block; width:8px; height:8px; background:#d9d9d9; border-radius:50%; margin-right:6px; }
@@ -197,6 +202,25 @@ def sanitize_filename(name: str) -> str:
     name = re.sub(r'[【】\[\]()]', ' ', name)
     clean_name = INVALID_CHARS_REGEX.sub('', name)
     return re.sub(r'\s+', ' ', clean_name).strip()
+
+def extract_smart_folder_name(full_text: str, match_start: int) -> str:
+    lookback_limit = max(0, match_start - 200)
+    pre_text = full_text[lookback_limit:match_start]
+    lines = pre_text.splitlines()
+    candidate_name = ""
+    for line in reversed(lines):
+        clean_line = line.strip()
+        if not clean_line: continue
+        if re.match(r'^(百度|链接|提取码|:|：|https?|夸克|pwd|code)*$', clean_line, re.IGNORECASE):
+            continue
+        clean_line = re.sub(r'(百度|链接|提取码|:|：|pwd|夸克).*$', '', clean_line, flags=re.IGNORECASE).strip()
+        if clean_line:
+            candidate_name = clean_line
+            break
+    final_name = sanitize_filename(candidate_name)
+    if not final_name or len(final_name) < 2:
+        return f"Res_{int(time.time())}" 
+    return final_name[:50]
 
 def send_notification(bark_key, pushdeer_key, title, body):
     if bark_key:
@@ -498,7 +522,6 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                             for match in q_matches:
                                 current_idx += 1
                                 raw_url = match.group(1)
-                                # 🟡 优化：只打印链接，不打印文件名
                                 job_manager.add_log(job_id, f"处理中: {raw_url}", "quark")
                                 job_manager.update_progress(job_id, current_idx, total_tasks)
                                 
@@ -540,12 +563,10 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                             pwd_match = re.search(r'(?:\?pwd=|&pwd=|\s+|提取码[:：]?\s*)([a-zA-Z0-9]{4})', match.group(0))
                             pwd = pwd_match.group(1) if pwd_match else ""
                             
-                            # 🟡 优化：只打印链接
                             job_manager.add_log(job_id, f"处理中: {raw_url}", "baidu")
                             job_manager.update_progress(job_id, current_idx, total_tasks)
                             
                             t_task = time.time()
-                            # 虽然不打印名字，但转存还是要用到 name
                             name = extract_smart_folder_name(input_text, match.start())
                             new_url, msg, new_dir_path = b_engine.process_url({'url': raw_url, 'pwd': pwd, 'name': name}, BAIDU_SAVE_PATH)
                             t_task_end = get_time_diff(t_task)
@@ -582,19 +603,24 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
 # ==========================================
 # 6. 主逻辑 (前端 UI)
 # ==========================================
-# 🛡️ 辅助函数：缓存检测结果，避免每次刷新都请求API
-@st.cache_data(ttl=300) # 缓存5分钟
+# 🟡 修复1：使用同步 Requests 进行检测，更稳定
+@st.cache_data(ttl=300) 
 def check_cookies_validity(q_c, b_c):
     status = {"quark": False, "baidu": False}
     
-    # 夸克检测
+    # 夸克检测 (使用 requests)
     if q_c:
         try:
-            # 必须新建 loop 或同步运行，因为 streamlet 是 sync 环境
-            q_eng = QuarkEngine(q_c)
-            user = asyncio.run(q_eng.check_login())
-            asyncio.run(q_eng.close())
-            if user: status["quark"] = True
+            headers = {
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'cookie': q_c,
+                'referer': 'https://pan.quark.cn/'
+            }
+            params = {'pr': 'ucpro', 'fr': 'pc', '__dt': random.randint(100, 9999)}
+            r = requests.get('https://pan.quark.cn/account/info', headers=headers, params=params, timeout=5)
+            data = r.json()
+            if (data.get('code') == 0 or data.get('code') == 'OK') and data.get('data'):
+                status["quark"] = True
         except: pass
         
     # 百度检测
@@ -644,7 +670,6 @@ def main():
     with st.sidebar:
         st.header("⚙️ 状态监控")
         
-        # 夸克状态
         if not q_c:
             st.markdown('<span class="status-dot-gray"></span> 夸克: 未配置', unsafe_allow_html=True)
         elif cookie_status["quark"]:
@@ -652,7 +677,6 @@ def main():
         else:
             st.markdown('<span class="status-dot-red"></span> 夸克: <span style="color:#ff4d4f">已失效</span>', unsafe_allow_html=True)
             
-        # 百度状态
         if not b_c:
             st.markdown('<span class="status-dot-gray"></span> 百度: 未配置', unsafe_allow_html=True)
         elif cookie_status["baidu"]:
@@ -686,7 +710,6 @@ def main():
             if not input_text.strip():
                 st.toast("请输入内容", icon="⚠️"); return
             
-            # 提交前再次检查，如果全失效则阻断
             if not cookie_status["quark"] and not cookie_status["baidu"]:
                  st.error("❌ 所有账号 Cookie 均已失效，请更新 Secrets 后重试。")
                  return
@@ -723,20 +746,16 @@ def main():
             with st.expander("📜 执行日志", expanded=True):
                 st.markdown('<div class="log-container">', unsafe_allow_html=True)
                 for log in job_data['logs']:
-                    # 极简图标映射
                     icon = "🔹"
                     if log['type'] == 'success': icon = '<span class="icon-success">✔</span>'
                     elif log['type'] == 'error': icon = '<span class="icon-error">✖</span>'
                     elif log['type'] == 'quark': icon = '<span class="icon-quark">☁</span>'
                     elif log['type'] == 'baidu': icon = '<span class="icon-baidu">🐻</span>'
                     
-                    # 识别链接并美化显示
                     msg_display = log['msg']
-                    # 如果消息里有链接，包裹一下样式
                     url_match = re.search(r'(https?://[^\s]+)', msg_display)
                     if url_match:
                         url = url_match.group(1)
-                        # 截断过长链接显示
                         short_url = url[:40] + "..." if len(url) > 40 else url
                         msg_display = msg_display.replace(url, f'<span class="url-highlight">{short_url}</span>')
 
