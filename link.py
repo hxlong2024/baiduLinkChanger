@@ -1,18 +1,15 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import httpx
-import requests
-import asyncio
-import re
-import time
-import random
-import string
-import json
 import threading
 import uuid
+import time
+import requests
+import re
+import random
+import html
+import asyncio
+import string
 from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
-from typing import Union, List, Any
 from retrying import retry
 
 # ==========================================
@@ -33,16 +30,8 @@ q_img_url = get_secret("quark", "img_url")
 b_img_url = get_secret("baidu", "img_url")
 
 FIXED_IMAGE_CONFIG = {
-    "quark": {
-        "url": q_img_url,
-        "enabled": bool(q_img_url and q_img_url.strip())
-    },
-    "baidu": {
-        "url": b_img_url,
-        "pwd": get_secret("baidu", "img_pwd"),
-        "name": get_secret("baidu", "img_name", "公众号关注.jpg"),
-        "enabled": bool(b_img_url and b_img_url.strip())
-    }
+    "quark": {"url": q_img_url, "enabled": bool(q_img_url and q_img_url.strip())},
+    "baidu": {"url": b_img_url, "pwd": get_secret("baidu", "img_pwd"), "name": get_secret("baidu", "img_name", "公众号关注.jpg"), "enabled": bool(b_img_url and b_img_url.strip())}
 }
 
 QUARK_SAVE_PATH = "来自：分享/LinkChanger"
@@ -82,9 +71,15 @@ class JobManager:
     def add_log(self, job_id, message, type="info"):
         if job_id in self.jobs:
             timestamp = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%H:%M:%S")
-            # 🟢 纯文本日志，不含任何 HTML/Markdown 标记
-            log_entry = f"{timestamp} | {message}"
-            self.jobs[job_id]["logs"].append(log_entry)
+            # 🟢 使用 Emoji 代替 CSS 图标，绝对稳定
+            icon = "ℹ️"
+            if type == 'success': icon = "✅"
+            elif type == 'error': icon = "❌"
+            elif type == 'quark': icon = "☁️"
+            elif type == 'baidu': icon = "🐻"
+            
+            # 存入纯文本
+            self.jobs[job_id]["logs"].append(f"{timestamp} {icon} {message}")
 
     def update_progress(self, job_id, current, total):
         if job_id in self.jobs:
@@ -99,7 +94,7 @@ class JobManager:
 job_manager = JobManager()
 
 # ==========================================
-# 2. 页面配置与样式
+# 2. 页面配置 (移除所有自定义 CSS)
 # ==========================================
 st.set_page_config(
     page_title="网盘转存助手",
@@ -108,38 +103,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🟢 极简 CSS，防止干扰渲染
+# 仅保留极其简单的 CSS 用于调整顶部间距
 st.markdown("""
     <style>
-    .block-container { padding-top: 20px !important; padding-bottom: 3rem; }
-    .stTextArea textarea { font-family: 'Source Code Pro', monospace; font-size: 14px; }
-    
-    /* 简单的状态点 */
-    .status-dot-green { color: #52c41a; font-weight: bold; }
-    .status-dot-red { color: #ff4d4f; font-weight: bold; }
-    .status-dot-gray { color: #d9d9d9; font-weight: bold; }
-    
-    /* 返回顶部按钮 */
-    .back-to-top {
-        position: fixed;
-        bottom: 80px;
-        right: 20px;
-        width: 45px;
-        height: 45px;
-        background-color: #ff4b4b;
-        border-radius: 50%;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        z-index: 999999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-decoration: none;
-        color: white;
-        font-size: 20px;
-        opacity: 0.8;
-    }
+    .block-container { padding-top: 1rem !important; padding-bottom: 3rem; }
+    /* 隐藏 footer */
+    footer {visibility: hidden;}
     </style>
-    <div id="top-anchor" style="position:absolute; top:-50px; visibility:hidden;"></div>
 """, unsafe_allow_html=True)
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
@@ -147,17 +117,6 @@ INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
 def get_time_diff(start_time):
     diff = time.time() - start_time
     return f"{diff:.2f}s"
-
-def create_copy_button_html(text_to_copy: str):
-    safe_text = json.dumps(text_to_copy)[1:-1]
-    return f"""
-    <div style="margin-top: 10px;">
-        <button style="width:100%;padding:12px;background:#fff;border:1px solid #ddd;border-radius:8px;font-weight:bold;color:#333;cursor:pointer;" 
-        onclick="navigator.clipboard.writeText('{safe_text}').then(()=>{{this.innerText='✅ 已复制';this.style.color='green';setTimeout(()=>{{this.innerText='📋 一键复制结果';this.style.color='#333'}}, 2000)}})">
-        📋 一键复制结果
-        </button>
-    </div>
-    """
 
 def sanitize_filename(name: str) -> str:
     if not name: return ""
@@ -198,6 +157,9 @@ def send_notification(bark_key, pushdeer_key, title, body):
 # ==========================================
 # 3. 引擎类 (夸克 & 百度)
 # ==========================================
+# (引擎代码逻辑保持不变，为节省篇幅省略重复部分，请保持原有的 class QuarkEngine 和 class BaiduEngine)
+# ⚠️ 注意：请确保下方包含了完整的 QuarkEngine 和 BaiduEngine 类定义 ⚠️
+
 class QuarkEngine:
     def __init__(self, cookies: str):
         self.headers = {
@@ -445,7 +407,6 @@ class BaiduEngine:
 # 5. 核心：后台线程 Worker
 # ==========================================
 def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, pushdeer_key):
-    
     async def async_worker():
         start_time = datetime.now()
         final_text = input_text
@@ -563,44 +524,29 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
     asyncio.run(async_worker())
 
 # ==========================================
-# 6. 主逻辑 (前端 UI)
+# 6. 主逻辑 (前端 UI) - 🟢 彻底重构
 # ==========================================
 @st.cache_data(ttl=300) 
 def check_cookies_validity(q_c, b_c):
     status = {"quark": False, "baidu": False}
-    
     if q_c:
         try:
-            headers = {
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'cookie': q_c,
-                'referer': 'https://pan.quark.cn/'
-            }
+            headers = {'user-agent': 'Mozilla/5.0', 'cookie': q_c, 'referer': 'https://pan.quark.cn/'}
             params = {'pr': 'ucpro', 'fr': 'pc', '__dt': random.randint(100, 9999)}
             r = requests.get('https://pan.quark.cn/account/info', headers=headers, params=params, timeout=5)
-            data = r.json()
-            if (data.get('code') == 0 or data.get('code') == 'OK') and data.get('data'):
-                status["quark"] = True
+            if (r.json().get('code') in [0, 'OK']) and r.json().get('data'): status["quark"] = True
         except: pass
-        
     if b_c:
         try:
             b_eng = BaiduEngine(b_c)
             if b_eng.init_token(): status["baidu"] = True
         except: pass
-        
     return status
 
 def check_password():
-    """🔒 密码校验逻辑 (支持为空免密)"""
     TARGET_PWD = get_secret("general", "app_password", "")
-
-    if not TARGET_PWD or not TARGET_PWD.strip():
-        return True
-
-    if "password_correct" not in st.session_state:
-        st.session_state.password_correct = False
-
+    if not TARGET_PWD or not TARGET_PWD.strip(): return True
+    if "password_correct" not in st.session_state: st.session_state.password_correct = False
     if not st.session_state.password_correct:
         st.title("🔒 访问受限")
         pwd = st.text_input("请输入访问密码", type="password")
@@ -614,8 +560,7 @@ def check_password():
     return True
 
 def main():
-    if not check_password():
-        return
+    if not check_password(): return
 
     st.title("网盘转存助手")
     
@@ -623,40 +568,26 @@ def main():
     pushdeer_key = get_secret("general", "pushdeer_key")
     q_c = get_secret("quark", "cookie")
     b_c = get_secret("baidu", "cookie")
-
     cookie_status = check_cookies_validity(q_c, b_c)
 
     with st.sidebar:
         st.header("⚙️ 状态监控")
-        
-        if not q_c:
-            st.markdown('⚪ 夸克: <span class="status-dot-gray">未配置</span>', unsafe_allow_html=True)
-        elif cookie_status["quark"]:
-            st.markdown('🟢 夸克: <span class="status-dot-green">有效</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('🔴 夸克: <span class="status-dot-red">已失效</span>', unsafe_allow_html=True)
+        if not q_c: st.markdown("⚪ **夸克**: 未配置")
+        elif cookie_status["quark"]: st.markdown("🟢 **夸克**: 有效")
+        else: st.markdown("🔴 **夸克**: 已失效")
             
-        if not b_c:
-            st.markdown('⚪ 百度: <span class="status-dot-gray">未配置</span>', unsafe_allow_html=True)
-        elif cookie_status["baidu"]:
-            st.markdown('🟢 百度: <span class="status-dot-green">有效</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('🔴 百度: <span class="status-dot-red">已失效</span>', unsafe_allow_html=True)
+        if not b_c: st.markdown("⚪ **百度**: 未配置")
+        elif cookie_status["baidu"]: st.markdown("🟢 **百度**: 有效")
+        else: st.markdown("🔴 **百度**: 已失效")
 
         st.divider()
+        if FIXED_IMAGE_CONFIG['quark']['enabled']: st.success("🖼️ 夸克植入: 开启")
+        else: st.caption("⚪ 夸克植入: 关闭")
         
-        if FIXED_IMAGE_CONFIG['quark']['enabled']:
-            st.success("🖼️ 夸克植入: 开启")
-        else:
-            st.caption("⚪ 夸克植入: 关闭")
+        if FIXED_IMAGE_CONFIG['baidu']['enabled']: st.success("🖼️ 百度植入: 开启")
+        else: st.caption("⚪ 百度植入: 关闭")
         
-        if FIXED_IMAGE_CONFIG['baidu']['enabled']:
-            st.success("🖼️ 百度植入: 开启")
-        else:
-            st.caption("⚪ 百度植入: 关闭")
-        
-        if bark_key or pushdeer_key:
-            st.info("📢 消息推送: 开启")
+        if bark_key or pushdeer_key: st.info("📢 消息推送: 开启")
 
     query_params = st.query_params
     current_job_id = query_params.get("job_id", None)
@@ -664,26 +595,17 @@ def main():
     if not current_job_id:
         st.info("💡 提示：后台自动运行，任务开始后可关闭网页。")
         input_text = st.text_area("📝 粘贴链接...", height=150, key="link_input")
-        
         if st.button("🚀 开始转存", type="primary", use_container_width=True):
-            if not input_text.strip():
-                st.toast("请输入内容", icon="⚠️"); return
-            
+            if not input_text.strip(): st.toast("请输入内容", icon="⚠️"); return
             if not cookie_status["quark"] and not cookie_status["baidu"]:
-                 st.error("❌ 所有账号 Cookie 均已失效，请更新 Secrets 后重试。")
-                 return
-
+                 st.error("❌ 所有账号 Cookie 均已失效"); return
             new_job_id = job_manager.create_job()
-            
             t = threading.Thread(target=worker_thread, args=(new_job_id, input_text, q_c, b_c, bark_key, pushdeer_key))
             t.start()
-            
             st.query_params["job_id"] = new_job_id
             st.rerun()
-
     else:
         job_data = job_manager.get_job(current_job_id)
-        
         if not job_data:
             st.error("❌ 任务不存在或已过期")
             if st.button("🔙 返回"):
@@ -691,9 +613,8 @@ def main():
                 st.rerun()
         else:
             status = job_data['status']
-            
             if status == "running":
-                st.markdown(f"### 🔄 运行中... <span class='running-badge'>RUNNING</span>", unsafe_allow_html=True)
+                st.markdown(f"### 🔄 运行中... <span style='color:blue;font-weight:bold'>RUNNING</span>", unsafe_allow_html=True)
                 st.caption(f"ID: `{current_job_id}`")
             else:
                 st.markdown("### ✅ 已完成")
@@ -702,37 +623,35 @@ def main():
             if prog['total'] > 0:
                 st.progress(prog['current'] / prog['total'], text=f"进度: {prog['current']} / {prog['total']}")
 
-            # 🟢 彻底移除 st.expander 和 HTML，改用 st.code 显示日志
-            # 这是最稳定、最防弹的显示方式
+            # 🟢 彻底修复：使用 st.code 显示日志，不使用任何自定义 HTML
             st.markdown("##### 📜 执行日志")
             if job_data['logs']:
+                # 将日志列表合并为字符串
                 logs_text = "\n".join(job_data['logs'])
-                st.code(logs_text, language="text")
+                # 使用代码块渲染，手机端绝对兼容
+                st.code(logs_text, language=None)
             else:
                 st.info("暂无日志...")
 
             if status == "done":
                 res_text = job_data['result_text']
                 summary = job_data['summary']
+                duration = str(summary.get('duration', '0s')).split('.')[0]
                 
-                duration_str = str(summary.get('duration', '0s'))
-                safe_duration = duration_str[:-4] if len(duration_str) > 4 else duration_str
-
-                st.success(f"✅ 成功: {summary.get('success', 0)} / {summary.get('total', 0)} | ⏱ 耗时: {safe_duration}")
+                # 🟢 增加间距
+                st.divider()
+                st.success(f"✅ 成功: {summary.get('success', 0)} / {summary.get('total', 0)}  |  ⏱ 耗时: {duration}")
                 
-                st.text_area("⬇️ 最终结果", value=res_text, height=200)
-                components.html(create_copy_button_html(res_text), height=80)
+                st.markdown("##### ⬇️ 最终结果 (点击右上角复制)")
+                # 🟢 使用 st.code 显示结果，自带稳定复制按钮
+                st.code(res_text, language="text")
                 
                 if st.button("🗑️ 开始新任务", use_container_width=True):
                     st.query_params.clear()
                     st.rerun()
             else:
-                # 🟡 保持较慢的刷新频率，确保稳定
                 time.sleep(3) 
                 st.rerun()
-
-# 返回顶部按钮
-st.markdown('<a href="#top-anchor" class="back-to-top" title="Top">⬆️</a>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
