@@ -10,7 +10,6 @@ import string
 import json
 import threading
 import uuid
-import html
 from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 from typing import Union, List, Any
@@ -69,7 +68,7 @@ class JobManager:
         job_id = str(uuid.uuid4())[:8]
         self.jobs[job_id] = {
             "status": "running",
-            "logs": [],
+            "logs": [], # 🟢 存纯文本列表
             "result_text": "",
             "progress": {"current": 0, "total": 0},
             "created_at": datetime.now(),
@@ -81,11 +80,12 @@ class JobManager:
         return self.jobs.get(job_id)
 
     def add_log(self, job_id, message, type="info"):
-        """type: info, success, error, quark, baidu"""
+        """type参数保留但不再用于样式，仅做兼容"""
         if job_id in self.jobs:
             timestamp = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%H:%M:%S")
-            safe_message = html.escape(message)
-            self.jobs[job_id]["logs"].append({"time": timestamp, "msg": safe_message, "type": type})
+            # 🟢 回归纯文本格式，简单粗暴最稳定
+            log_entry = f"[{timestamp}] {message}"
+            self.jobs[job_id]["logs"].append(log_entry)
 
     def update_progress(self, job_id, current, total):
         if job_id in self.jobs:
@@ -114,56 +114,8 @@ st.markdown('<div id="top-anchor" style="position:absolute; top:-50px; visibilit
 st.markdown("""
     <style>
     .block-container { padding-top: 32px !important; padding-bottom: 3rem; }
-    .stTextArea textarea { font-family: 'Source Code Pro', monospace; font-size: 14px; }
+    .stTextArea textarea { font-family: 'Source Code Pro', monospace; font-size: 13px; }
     
-    .log-container {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        font-size: 13px;
-        display: flex;
-        flex-direction: column;
-        border: 1px solid #f0f0f0;
-        border-radius: 8px;
-        padding: 10px;
-        background: #fff;
-        max-height: 350px; /* 🔥 限制最大高度，防止手机端渲染过长列表崩溃 */
-        overflow-y: auto;
-    }
-    .log-item {
-        display: flex;
-        align-items: center;
-        padding: 6px 0;
-        border-bottom: 1px solid #f8f8f8;
-    }
-    .log-item:last-child { border-bottom: none; }
-    
-    .log-time {
-        color: #bbb;
-        font-size: 12px;
-        font-family: monospace;
-        margin-right: 12px;
-        min-width: 60px;
-    }
-    .log-msg {
-        color: #444;
-        word-break: break-all;
-        flex-grow: 1;
-    }
-    
-    .icon-success { color: #52c41a; margin-right: 6px; font-weight:bold; }
-    .icon-error { color: #ff4d4f; margin-right: 6px; font-weight:bold; }
-    .icon-quark { color: #1677ff; margin-right: 6px; font-weight:bold; }
-    .icon-baidu { color: #ff4d4f; margin-right: 6px; font-weight:bold; }
-    .icon-info { color: #8c8c8c; margin-right: 6px; font-weight:bold; }
-    
-    .url-highlight {
-        background: #f0f5ff;
-        color: #2f54eb;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: monospace;
-        font-size: 0.9em;
-    }
-
     .result-box { 
         background: #fcfcfc; 
         border: 1px solid #eee; 
@@ -175,9 +127,32 @@ st.markdown("""
     
     .running-badge { color: #0088ff; font-weight: bold; animation: pulse 1.5s infinite; }
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    
+    /* 状态点样式 */
     .status-dot-green { display:inline-block; width:8px; height:8px; background:#52c41a; border-radius:50%; margin-right:6px; }
     .status-dot-red { display:inline-block; width:8px; height:8px; background:#ff4d4f; border-radius:50%; margin-right:6px; }
     .status-dot-gray { display:inline-block; width:8px; height:8px; background:#d9d9d9; border-radius:50%; margin-right:6px; }
+    
+    /* 返回顶部按钮 */
+    .back-to-top {
+        position: fixed;
+        bottom: 80px;
+        right: 20px;
+        width: 40px;
+        height: 40px;
+        background-color: #333;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        z-index: 999999;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.6;
+        transition: opacity 0.3s;
+    }
+    .back-to-top:hover { opacity: 1; }
+    .back-to-top svg { width: 20px; height: 20px; stroke: white; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -608,6 +583,7 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
 def check_cookies_validity(q_c, b_c):
     status = {"quark": False, "baidu": False}
     
+    # 夸克检测 (使用 requests 同步检测)
     if q_c:
         try:
             headers = {
@@ -622,6 +598,7 @@ def check_cookies_validity(q_c, b_c):
                 status["quark"] = True
         except: pass
         
+    # 百度检测
     if b_c:
         try:
             b_eng = BaiduEngine(b_c)
@@ -663,6 +640,7 @@ def main():
     q_c = get_secret("quark", "cookie")
     b_c = get_secret("baidu", "cookie")
 
+    # 🟡 自动检测 Cookie 有效性
     cookie_status = check_cookies_validity(q_c, b_c)
 
     with st.sidebar:
@@ -742,35 +720,10 @@ def main():
                 st.progress(prog['current'] / prog['total'], text=f"进度: {prog['current']} / {prog['total']}")
 
             with st.expander("📜 执行日志", expanded=True):
-                # 🟡 占位符：用于稳定容器
-                log_placeholder = st.empty() 
-                
-                # 🟡 生成日志 HTML
-                log_html = '<div class="log-container">'
-                for log in job_data['logs']:
-                    icon = "🔹"
-                    if log['type'] == 'success': icon = '<span class="icon-success">✔</span>'
-                    elif log['type'] == 'error': icon = '<span class="icon-error">✖</span>'
-                    elif log['type'] == 'quark': icon = '<span class="icon-quark">☁</span>'
-                    elif log['type'] == 'baidu': icon = '<span class="icon-baidu">🐻</span>'
-                    
-                    msg_display = log['msg']
-                    url_match = re.search(r'(https?://[^\s]+)', msg_display)
-                    if url_match:
-                        url = url_match.group(1)
-                        short_url = url[:40] + "..." if len(url) > 40 else url
-                        msg_display = msg_display.replace(url, f'<span class="url-highlight">{short_url}</span>')
-
-                    log_html += f"""
-                    <div class="log-item">
-                        <div class="log-time">{log['time']}</div>
-                        <div>{icon} {msg_display}</div>
-                    </div>
-                    """
-                log_html += '</div>'
-                
-                # 🟡 一次性渲染整个日志块
-                log_placeholder.markdown(log_html, unsafe_allow_html=True)
+                # 🟡 核心修复：使用纯文本 textarea 替代 HTML 渲染
+                # 将日志列表转换为字符串，每行一个
+                logs_text = "\n".join(job_data['logs'])
+                st.text_area("日志详情", value=logs_text, height=300, disabled=True, label_visibility="collapsed")
 
             if status == "done":
                 res_text = job_data['result_text']
@@ -784,6 +737,7 @@ def main():
                     <p style="margin:0;color:#666">✅ 成功: <b>{summary.get('success', 0)}</b> / {summary.get('total', 0)} 
                     &nbsp;|&nbsp; ⏱ 耗时: {safe_duration}</p>
                 </div>
+                <div style='height: 20px;'></div>
                 """, unsafe_allow_html=True)
                 
                 st.text_area("⬇️ 最终结果", value=res_text, height=200)
@@ -793,7 +747,7 @@ def main():
                     st.query_params.clear()
                     st.rerun()
             else:
-                # 🟡 修复：降低刷新频率到 3秒，防止手机端崩溃
+                # 🟡 增加刷新间隔到 3s，缓解手机渲染压力
                 time.sleep(3) 
                 st.rerun()
 
