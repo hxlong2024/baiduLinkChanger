@@ -6,8 +6,6 @@ import requests
 import re
 import random
 import html
-import asyncio
-import string
 from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 from retrying import retry
@@ -25,7 +23,6 @@ def get_secret(section, key, default=""):
     except: pass
     return default
 
-# 🔄 动态初始化配置
 q_img_url = get_secret("quark", "img_url")
 b_img_url = get_secret("baidu", "img_url")
 
@@ -71,14 +68,12 @@ class JobManager:
     def add_log(self, job_id, message, type="info"):
         if job_id in self.jobs:
             timestamp = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%H:%M:%S")
-            # 🟢 使用 Emoji 代替 CSS 图标，绝对稳定
-            icon = "ℹ️"
+            # 纯文本日志，最稳定
+            icon = "🔹"
             if type == 'success': icon = "✅"
             elif type == 'error': icon = "❌"
             elif type == 'quark': icon = "☁️"
             elif type == 'baidu': icon = "🐻"
-            
-            # 存入纯文本
             self.jobs[job_id]["logs"].append(f"{timestamp} {icon} {message}")
 
     def update_progress(self, job_id, current, total):
@@ -94,7 +89,7 @@ class JobManager:
 job_manager = JobManager()
 
 # ==========================================
-# 2. 页面配置 (移除所有自定义 CSS)
+# 2. 页面配置与“防弹”样式
 # ==========================================
 st.set_page_config(
     page_title="网盘转存助手",
@@ -103,13 +98,33 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 仅保留极其简单的 CSS 用于调整顶部间距
+# 🛡️ 核心修复：注入 meta 标签，禁止浏览器翻译和自动调整，防止破坏 DOM 导致红屏
 st.markdown("""
+    <meta name="google" content="notranslate">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
+    /* 强制禁止翻译属性 */
+    body { -webkit-font-smoothing: antialiased; }
+    .stApp { touch-action: manipulation; }
+    
+    /* 简单的样式优化 */
     .block-container { padding-top: 1rem !important; padding-bottom: 3rem; }
-    /* 隐藏 footer */
-    footer {visibility: hidden;}
+    
+    /* 状态点 */
+    .status-dot-green { color: #52c41a; font-weight: bold; }
+    .status-dot-red { color: #ff4d4f; font-weight: bold; }
+    .status-dot-gray { color: #d9d9d9; font-weight: bold; }
+    
+    /* 返回顶部 */
+    .back-to-top {
+        position: fixed; bottom: 80px; right: 20px; width: 45px; height: 45px;
+        background-color: #ff4b4b; border-radius: 50%;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 999999;
+        display: flex; align-items: center; justify-content: center;
+        text-decoration: none; color: white; font-size: 20px; opacity: 0.8;
+    }
     </style>
+    <div id="top-anchor"></div>
 """, unsafe_allow_html=True)
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
@@ -117,6 +132,17 @@ INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
 def get_time_diff(start_time):
     diff = time.time() - start_time
     return f"{diff:.2f}s"
+
+def create_copy_button_html(text_to_copy: str):
+    safe_text = json.dumps(text_to_copy)[1:-1]
+    return f"""
+    <div style="margin-top: 10px;">
+        <button style="width:100%;padding:12px;background:#fff;border:1px solid #ddd;border-radius:8px;font-weight:bold;color:#333;cursor:pointer;" 
+        onclick="navigator.clipboard.writeText('{safe_text}').then(()=>{{this.innerText='✅ 已复制';this.style.color='green';setTimeout(()=>{{this.innerText='📋 一键复制结果';this.style.color='#333'}}, 2000)}})">
+        📋 一键复制结果
+        </button>
+    </div>
+    """
 
 def sanitize_filename(name: str) -> str:
     if not name: return ""
@@ -157,9 +183,6 @@ def send_notification(bark_key, pushdeer_key, title, body):
 # ==========================================
 # 3. 引擎类 (夸克 & 百度)
 # ==========================================
-# (引擎代码逻辑保持不变，为节省篇幅省略重复部分，请保持原有的 class QuarkEngine 和 class BaiduEngine)
-# ⚠️ 注意：请确保下方包含了完整的 QuarkEngine 和 BaiduEngine 类定义 ⚠️
-
 class QuarkEngine:
     def __init__(self, cookies: str):
         self.headers = {
@@ -407,6 +430,7 @@ class BaiduEngine:
 # 5. 核心：后台线程 Worker
 # ==========================================
 def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, pushdeer_key):
+    
     async def async_worker():
         start_time = datetime.now()
         final_text = input_text
@@ -524,7 +548,7 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
     asyncio.run(async_worker())
 
 # ==========================================
-# 6. 主逻辑 (前端 UI) - 🟢 彻底重构
+# 6. 主逻辑 (前端 UI)
 # ==========================================
 @st.cache_data(ttl=300) 
 def check_cookies_validity(q_c, b_c):
@@ -594,7 +618,11 @@ def main():
 
     if not current_job_id:
         st.info("💡 提示：后台自动运行，任务开始后可关闭网页。")
+        # 🟢 设置 translate=no 防止浏览器翻译导致 DOM 错乱
+        st.markdown('<div translate="no">', unsafe_allow_html=True)
         input_text = st.text_area("📝 粘贴链接...", height=150, key="link_input")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
         if st.button("🚀 开始转存", type="primary", use_container_width=True):
             if not input_text.strip(): st.toast("请输入内容", icon="⚠️"); return
             if not cookie_status["quark"] and not cookie_status["baidu"]:
@@ -614,7 +642,7 @@ def main():
         else:
             status = job_data['status']
             if status == "running":
-                st.markdown(f"### 🔄 运行中... <span style='color:blue;font-weight:bold'>RUNNING</span>", unsafe_allow_html=True)
+                st.markdown(f"### 🔄 运行中... <span style='color:blue'>RUNNING</span>", unsafe_allow_html=True)
                 st.caption(f"ID: `{current_job_id}`")
             else:
                 st.markdown("### ✅ 已完成")
@@ -623,35 +651,40 @@ def main():
             if prog['total'] > 0:
                 st.progress(prog['current'] / prog['total'], text=f"进度: {prog['current']} / {prog['total']}")
 
-            # 🟢 彻底修复：使用 st.code 显示日志，不使用任何自定义 HTML
+            # 🛡️ 核心修复：使用 st.text 显示日志，并包裹在禁止翻译容器中
+            st.markdown('<div translate="no">', unsafe_allow_html=True)
             st.markdown("##### 📜 执行日志")
             if job_data['logs']:
-                # 将日志列表合并为字符串
                 logs_text = "\n".join(job_data['logs'])
-                # 使用代码块渲染，手机端绝对兼容
-                st.code(logs_text, language=None)
+                # st.text 是最最基础的纯文本组件，没有语法高亮，渲染极快
+                st.text(logs_text)
             else:
                 st.info("暂无日志...")
+            st.markdown('</div>', unsafe_allow_html=True)
 
             if status == "done":
                 res_text = job_data['result_text']
                 summary = job_data['summary']
                 duration = str(summary.get('duration', '0s')).split('.')[0]
                 
-                # 🟢 增加间距
                 st.divider()
                 st.success(f"✅ 成功: {summary.get('success', 0)} / {summary.get('total', 0)}  |  ⏱ 耗时: {duration}")
                 
+                st.markdown('<div translate="no">', unsafe_allow_html=True)
                 st.markdown("##### ⬇️ 最终结果 (点击右上角复制)")
-                # 🟢 使用 st.code 显示结果，自带稳定复制按钮
                 st.code(res_text, language="text")
+                st.markdown('</div>', unsafe_allow_html=True)
                 
                 if st.button("🗑️ 开始新任务", use_container_width=True):
                     st.query_params.clear()
                     st.rerun()
             else:
+                # 🟡 保持较慢的刷新频率
                 time.sleep(3) 
                 st.rerun()
+
+# 返回顶部按钮
+st.markdown('<a href="#top-anchor" class="back-to-top" title="Top">⬆️</a>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
