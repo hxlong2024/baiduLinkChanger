@@ -82,15 +82,9 @@ class JobManager:
     def add_log(self, job_id, message, type="info"):
         if job_id in self.jobs:
             timestamp = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%H:%M:%S")
-            # 🟢 关键修改：不再存 HTML，只存纯数据
-            # 格式：(时间, 图标, 消息)
-            icon = "🔹"
-            if type == 'success': icon = "✅"
-            elif type == 'error': icon = "❌"
-            elif type == 'quark': icon = "☁️"
-            elif type == 'baidu': icon = "🐻"
-            
-            self.jobs[job_id]["logs"].append(f"`{timestamp}` {icon} {message}")
+            # 🟢 纯文本日志，不含任何 HTML/Markdown 标记
+            log_entry = f"{timestamp} | {message}"
+            self.jobs[job_id]["logs"].append(log_entry)
 
     def update_progress(self, job_id, current, total):
         if job_id in self.jobs:
@@ -114,23 +108,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ⚓️ 顶部锚点
-st.markdown('<div id="top-anchor" style="position:absolute; top:-50px; visibility:hidden;"></div>', unsafe_allow_html=True)
-
-# 🟢 样式极大简化，删除所有导致崩溃的复杂 CSS
+# 🟢 极简 CSS，防止干扰渲染
 st.markdown("""
     <style>
-    .block-container { padding-top: 32px !important; padding-bottom: 3rem; }
+    .block-container { padding-top: 20px !important; padding-bottom: 3rem; }
     .stTextArea textarea { font-family: 'Source Code Pro', monospace; font-size: 14px; }
     
     /* 简单的状态点 */
     .status-dot-green { color: #52c41a; font-weight: bold; }
     .status-dot-red { color: #ff4d4f; font-weight: bold; }
     .status-dot-gray { color: #d9d9d9; font-weight: bold; }
-    
-    /* 运行中动画 */
-    .running-badge { color: #0088ff; font-weight: bold; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     
     /* 返回顶部按钮 */
     .back-to-top {
@@ -152,6 +139,7 @@ st.markdown("""
         opacity: 0.8;
     }
     </style>
+    <div id="top-anchor" style="position:absolute; top:-50px; visibility:hidden;"></div>
 """, unsafe_allow_html=True)
 
 INVALID_CHARS_REGEX = re.compile(r'[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]')
@@ -581,7 +569,6 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
 def check_cookies_validity(q_c, b_c):
     status = {"quark": False, "baidu": False}
     
-    # 夸克检测 (使用 requests 同步检测)
     if q_c:
         try:
             headers = {
@@ -596,7 +583,6 @@ def check_cookies_validity(q_c, b_c):
                 status["quark"] = True
         except: pass
         
-    # 百度检测
     if b_c:
         try:
             b_eng = BaiduEngine(b_c)
@@ -638,7 +624,6 @@ def main():
     q_c = get_secret("quark", "cookie")
     b_c = get_secret("baidu", "cookie")
 
-    # 🟡 自动检测 Cookie 有效性
     cookie_status = check_cookies_validity(q_c, b_c)
 
     with st.sidebar:
@@ -717,18 +702,14 @@ def main():
             if prog['total'] > 0:
                 st.progress(prog['current'] / prog['total'], text=f"进度: {prog['current']} / {prog['total']}")
 
-            with st.expander("📜 执行日志", expanded=True):
-                # 🟡 核心修复：使用纯文本 Markdown 渲染，彻底抛弃 HTML
-                # 这种方式在手机上渲染极快且稳定
-                log_lines = []
-                for log in job_data['logs']:
-                    log_lines.append(log)
-                
-                # 渲染为 Markdown 列表
-                if log_lines:
-                    st.markdown("\n\n".join(log_lines))
-                else:
-                    st.caption("暂无日志...")
+            # 🟢 彻底移除 st.expander 和 HTML，改用 st.code 显示日志
+            # 这是最稳定、最防弹的显示方式
+            st.markdown("##### 📜 执行日志")
+            if job_data['logs']:
+                logs_text = "\n".join(job_data['logs'])
+                st.code(logs_text, language="text")
+            else:
+                st.info("暂无日志...")
 
             if status == "done":
                 res_text = job_data['result_text']
@@ -737,8 +718,7 @@ def main():
                 duration_str = str(summary.get('duration', '0s'))
                 safe_duration = duration_str[:-4] if len(duration_str) > 4 else duration_str
 
-                # 🟡 修复：使用原生 st.success 替代 HTML div，防崩
-                st.success(f"✅ 成功: {summary.get('success', 0)} / {summary.get('total', 0)}  |  ⏱ 耗时: {safe_duration}")
+                st.success(f"✅ 成功: {summary.get('success', 0)} / {summary.get('total', 0)} | ⏱ 耗时: {safe_duration}")
                 
                 st.text_area("⬇️ 最终结果", value=res_text, height=200)
                 components.html(create_copy_button_html(res_text), height=80)
@@ -747,10 +727,11 @@ def main():
                     st.query_params.clear()
                     st.rerun()
             else:
+                # 🟡 保持较慢的刷新频率，确保稳定
                 time.sleep(3) 
                 st.rerun()
 
-# 返回顶部按钮 (纯 CSS 实现，不影响逻辑)
+# 返回顶部按钮
 st.markdown('<a href="#top-anchor" class="back-to-top" title="Top">⬆️</a>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
