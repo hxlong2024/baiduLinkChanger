@@ -304,6 +304,7 @@ def send_notification(bark_key, pushdeer_key, title, body):
 # ==========================================
 # 3. 引擎类 (夸克 & 百度)
 # ==========================================
+# 将原有的 QuarkEngine 类替换为这个：
 class QuarkEngine:
     def __init__(self, cookies: str):
         self.headers = {
@@ -329,25 +330,45 @@ class QuarkEngine:
         except: pass
         return None
 
-    async def get_folder_id(self, path: str):
+    # ✨ 新增：自动创建文件夹的逻辑
+    async def _mkdir(self, name, pdir_fid):
+        try:
+            data = {"file_name": name, "pdir_fid": pdir_fid, "dir_init_lock": False}
+            r = await self.client.post('https://drive-pc.quark.cn/1/clouddrive/file/mkdir', json=data, params=self._params())
+            if r.json().get('code') == 0:
+                return r.json()['data']['fid'] # 创建成功返回ID
+        except: pass
+        return None
+
+    # ✨ 升级：确保路径存在（不存在则创建）
+    async def ensure_path(self, path: str):
         parts = path.split('/')
-        curr_id = '0'
+        curr_id = '0' # 从根目录开始
         for part in parts:
             if not part: continue
-            found = False
+            found_fid = None
+            
+            # 1. 先查找是否存在
             params = self._params()
-            params.update({'pdir_fid': curr_id, '_page': 1, '_size': 50, '_fetch_total': 'false', '_sort': 'file_type:asc,updated_at:desc'})
+            params.update({'pdir_fid': curr_id, '_page': 1, '_size': 50, '_fetch_total': 'false'})
             try:
                 r = await self.client.get('https://drive-pc.quark.cn/1/clouddrive/file/sort', params=params)
                 for item in r.json().get('data', {}).get('list', []):
                     if item['file_name'] == part and item['dir']:
-                        curr_id = item['fid']
-                        found = True
+                        found_fid = item['fid']
                         break
             except: pass
-            if not found: return None 
+            
+            # 2. 如果不存在，则创建
+            if not found_fid:
+                found_fid = await self._mkdir(part, curr_id)
+            
+            if not found_fid: return None # 创建失败
+            curr_id = found_fid # 进入下一级
+            
         return curr_id
 
+    # process_url 保持不变，但为了完整性我还是放这里，你可以直接覆盖整个类
     async def process_url(self, url: str, target_fid: str, is_inject: bool = False):
         try:
             if '/s/' not in url: return None, "格式错误", None
@@ -583,10 +604,16 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                     else:
                         job_manager.add_log(job_id, f"登录成功: {user} (耗时: {get_time_diff(t0)})", "success")
                         t_root = time.time()
-                        root_fid = await q_engine.get_folder_id(QUARK_SAVE_PATH)
-                        if not root_fid: 
-                            job_manager.add_log(job_id, f"目录不存在，尝试创建 (耗时: {get_time_diff(t_root)})", "error")
-                        else:
+                        # 找到这一行（大约在 worker_thread 函数里）
+                         # root_fid = await q_engine.get_folder_id(QUARK_SAVE_PATH) 
+
+                         # 替换为 👇：
+                         root_fid = await q_engine.ensure_path(QUARK_SAVE_PATH)
+                         # 同时修改下面的判断日志（可选，为了逻辑通顺）：
+                         if not root_fid: 
+                            job_manager.add_log(job_id, f"目录创建失败: {QUARK_SAVE_PATH}", "error")
+                         else:# ... 继续执行
+
                             for match in q_matches:
                                 current_idx += 1
                                 raw_url = match.group(1)
