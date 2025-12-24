@@ -703,7 +703,7 @@ def main():
     current_job_id = query_params.get("job_id", None)
 
     if not current_job_id:
-        st.info("💡 提示：后台自动运行，任务开始后可关闭网页。")
+        st.info("💡 提示：后台自动运行，任务开始后可切换网页或软件。")
         input_text = st.text_area("📝 粘贴链接...", height=150, key="link_input")
         
         if st.button("🚀 开始转存", type="primary", use_container_width=True):
