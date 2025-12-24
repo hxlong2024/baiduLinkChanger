@@ -304,7 +304,6 @@ def send_notification(bark_key, pushdeer_key, title, body):
 # ==========================================
 # 3. 引擎类 (夸克 & 百度)
 # ==========================================
-# 将原有的 QuarkEngine 类替换为这个：
 class QuarkEngine:
     def __init__(self, cookies: str):
         self.headers = {
@@ -314,6 +313,8 @@ class QuarkEngine:
             'referer': 'https://pan.quark.cn/',
         }
         self.client = httpx.AsyncClient(timeout=45.0, headers=self.headers, follow_redirects=True)
+        # 🚀 新增：广告缓存
+        self.inject_cache = None
 
     async def close(self):
         await self.client.aclose()
@@ -330,74 +331,67 @@ class QuarkEngine:
         except: pass
         return None
 
-    # ✨ 新增：自动创建文件夹的逻辑
-    async def _mkdir(self, name, pdir_fid):
-        try:
-            data = {"file_name": name, "pdir_fid": pdir_fid, "dir_init_lock": False}
-            r = await self.client.post('https://drive-pc.quark.cn/1/clouddrive/file/mkdir', json=data, params=self._params())
-            if r.json().get('code') == 0:
-                return r.json()['data']['fid'] # 创建成功返回ID
-        except: pass
-        return None
-
-    # ✨ 升级：确保路径存在（不存在则创建）
-    async def ensure_path(self, path: str):
+    async def get_folder_id(self, path: str):
         parts = path.split('/')
-        curr_id = '0' # 从根目录开始
+        curr_id = '0'
         for part in parts:
             if not part: continue
-            found_fid = None
-            
-            # 1. 先查找是否存在
+            found = False
             params = self._params()
-            params.update({'pdir_fid': curr_id, '_page': 1, '_size': 50, '_fetch_total': 'false'})
+            params.update({'pdir_fid': curr_id, '_page': 1, '_size': 50, '_fetch_total': 'false', '_sort': 'file_type:asc,updated_at:desc'})
             try:
                 r = await self.client.get('https://drive-pc.quark.cn/1/clouddrive/file/sort', params=params)
                 for item in r.json().get('data', {}).get('list', []):
                     if item['file_name'] == part and item['dir']:
-                        found_fid = item['fid']
+                        curr_id = item['fid']
+                        found = True
                         break
             except: pass
-            
-            # 2. 如果不存在，则创建
-            if not found_fid:
-                found_fid = await self._mkdir(part, curr_id)
-            
-            if not found_fid: return None # 创建失败
-            curr_id = found_fid # 进入下一级
-            
+            if not found: return None 
         return curr_id
 
-    # process_url 保持不变，但为了完整性我还是放这里，你可以直接覆盖整个类
     async def process_url(self, url: str, target_fid: str, is_inject: bool = False):
-        try:
-            if '/s/' not in url: return None, "格式错误", None
-            pwd_id = url.split('/s/')[-1].split('?')[0].split('#')[0]
-            match = re.search(r'[?&]pwd=([a-zA-Z0-9]+)', url)
-            passcode = match.group(1) if match else ""
-        except: return None, "解析异常", None
+        # 🚀 优化：如果是植入模式且有缓存，直接读取
+        if is_inject and self.inject_cache:
+            source_fids = self.inject_cache['fids']
+            source_tokens = self.inject_cache['tokens']
+            pwd_id = self.inject_cache['pwd_id']
+            stoken = self.inject_cache['stoken']
+        else:
+            # --- 正常联网解析流程 ---
+            try:
+                if '/s/' not in url: return None, "格式错误", None
+                pwd_id = url.split('/s/')[-1].split('?')[0].split('#')[0]
+                match = re.search(r'[?&]pwd=([a-zA-Z0-9]+)', url)
+                passcode = match.group(1) if match else ""
+                
+                r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share/sharepage/token", 
+                                         json={"pwd_id": pwd_id, "passcode": passcode}, params=self._params())
+                stoken = r.json().get('data', {}).get('stoken')
+                if not stoken: return None, "提取码失效", None
+                
+                params = self._params()
+                params.update({"pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "_page": 1, "_size": 50})
+                r = await self.client.get("https://drive-pc.quark.cn/1/clouddrive/share/sharepage/detail", params=params)
+                items = r.json().get('data', {}).get('list', [])
+                if not items: return None, "空分享", None
+                source_fids = [i['fid'] for i in items]
+                source_tokens = [i['share_fid_token'] for i in items]
+                first_name = items[0]['file_name']
 
-        try:
-            r = await self.client.post("https://drive-pc.quark.cn/1/clouddrive/share/sharepage/token", 
-                                     json={"pwd_id": pwd_id, "passcode": passcode}, params=self._params())
-            stoken = r.json().get('data', {}).get('stoken')
-            if not stoken: return None, "提取码失效", None
-        except: return None, "Token请求失败", None
+                # 🚀 优化：如果是植入模式，保存结果到缓存
+                if is_inject:
+                    self.inject_cache = {
+                        'fids': source_fids, 'tokens': source_tokens, 
+                        'pwd_id': pwd_id, 'stoken': stoken
+                    }
 
-        params = self._params()
-        params.update({"pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "_page": 1, "_size": 50})
-        try:
-            r = await self.client.get("https://drive-pc.quark.cn/1/clouddrive/share/sharepage/detail", params=params)
-            items = r.json().get('data', {}).get('list', [])
-            if not items: return None, "空分享", None
-            source_fids = [i['fid'] for i in items]
-            source_tokens = [i['share_fid_token'] for i in items]
-            first_name = items[0]['file_name']
-        except: return None, "获取详情失败", None
+            except: return None, "解析异常", None
 
-        save_data = {"fid_list": source_fids, "fid_token_list": source_tokens, "to_pdir_fid": target_fid, 
-                     "pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "scene": "link"}
+        # --- 转存逻辑 ---
         try:
+            save_data = {"fid_list": source_fids, "fid_token_list": source_tokens, "to_pdir_fid": target_fid, 
+                         "pwd_id": pwd_id, "stoken": stoken, "pdir_fid": "0", "scene": "link"}
             r = await self.client.post("https://drive.quark.cn/1/clouddrive/share/sharepage/save", json=save_data, params=self._params())
             if r.json().get('code') not in [0, 'OK']: return None, f"转存失败: {r.json().get('message')}", None
             task_id = r.json().get('data', {}).get('task_id')
@@ -416,6 +410,9 @@ class QuarkEngine:
 
         await asyncio.sleep(1.5)
         new_fid = None
+        # 如果走了缓存，items可能没定义，需要重新处理下名字逻辑，但process_url主逻辑is_inject=False时不走缓存
+        # 只有is_inject=True才会走缓存，而植入模式直接返回INJECT_OK，不走到下面分享逻辑，所以items必然存在
+        
         params = self._params()
         params.update({'pdir_fid': target_fid, '_page': 1, '_size': 20, '_sort': 'updated_at:desc'})
         try:
@@ -456,6 +453,8 @@ class BaiduEngine:
             'Cookie': "".join(cookies.split())
         }
         self.bdstoken = ''
+        # 🚀 新增：广告缓存
+        self.inject_cache = None
         requests.packages.urllib3.disable_warnings()
 
     def update_cookie_bdclnd(self, bdclnd):
@@ -487,33 +486,50 @@ class BaiduEngine:
         except: pass
 
     def process_url(self, url_info: dict, root_path: str, is_inject: bool = False):
-        url = url_info['url']
-        pwd = url_info['pwd']
-        clean_url = url.split('?')[0]
-        folder_name = url_info.get('name', 'Temp')
-
-        try:
-            # 1. Verify
-            if pwd:
-                surl = re.search(r'(?:surl=|/s/1|/s/)([\w\-]+)', clean_url)
-                if not surl: return None, "URL格式错误", None
-                r = self.s.post('https://pan.baidu.com/share/verify', 
-                                params={'surl': surl.group(1), 't': int(time.time()*1000), 'bdstoken': self.bdstoken, 'channel': 'chunlei', 'web': 1, 'clienttype': 0},
-                                data={'pwd': pwd, 'vcode': '', 'vcode_str': ''}, headers=self.headers, verify=False)
-                if r.json()['errno'] == 0:
-                    self.update_cookie_bdclnd(r.json()['randsk'])
-                else:
-                    return None, "提取码错误", None
-
-            # 2. Get FSID
-            content = self.s.get(clean_url, headers=self.headers, verify=False).text
+        # 🚀 优化：如果是植入模式且有缓存，直接读取
+        if is_inject and self.inject_cache:
+            shareid = self.inject_cache['shareid']
+            uk = self.inject_cache['uk']
+            fs_id_list_str = self.inject_cache['fsidlist'] # 已经是字符串格式 "[123,456]"
+        else:
+            # --- 正常联网解析流程 ---
             try:
-                shareid = re.search(r'"shareid":(\d+?),', content).group(1)
-                uk = re.search(r'"share_uk":"(\d+?)",', content).group(1)
-                fs_id_list = re.findall(r'"fs_id":(\d+?),', content)
-                if not fs_id_list: return None, "无文件", None
-            except: return None, "页面解析失败", None
+                url = url_info['url']
+                pwd = url_info['pwd']
+                clean_url = url.split('?')[0]
+                folder_name = url_info.get('name', 'Temp')
 
+                if pwd:
+                    surl = re.search(r'(?:surl=|/s/1|/s/)([\w\-]+)', clean_url)
+                    if not surl: return None, "URL格式错误", None
+                    r = self.s.post('https://pan.baidu.com/share/verify', 
+                                    params={'surl': surl.group(1), 't': int(time.time()*1000), 'bdstoken': self.bdstoken, 'channel': 'chunlei', 'web': 1, 'clienttype': 0},
+                                    data={'pwd': pwd, 'vcode': '', 'vcode_str': ''}, headers=self.headers, verify=False)
+                    if r.json()['errno'] == 0:
+                        self.update_cookie_bdclnd(r.json()['randsk'])
+                    else:
+                        return None, "提取码错误", None
+
+                content = self.s.get(clean_url, headers=self.headers, verify=False).text
+                try:
+                    shareid = re.search(r'"shareid":(\d+?),', content).group(1)
+                    uk = re.search(r'"share_uk":"(\d+?)",', content).group(1)
+                    fs_id_list = re.findall(r'"fs_id":(\d+?),', content)
+                    if not fs_id_list: return None, "无文件", None
+                    
+                    fs_id_list_str = f"[{','.join(fs_id_list)}]"
+                    
+                    # 🚀 优化：如果是植入模式，保存结果到缓存
+                    if is_inject:
+                        self.inject_cache = {
+                            'shareid': shareid, 'uk': uk, 'fsidlist': fs_id_list_str
+                        }
+
+                except: return None, "页面解析失败", None
+            except Exception as e: return None, f"异常: {str(e)[:20]}", None
+
+        # --- 转存逻辑 ---
+        try:
             # 3. Path
             if is_inject:
                 save_path = root_path
@@ -527,7 +543,7 @@ class BaiduEngine:
             try:
                 r = self.s.post('https://pan.baidu.com/share/transfer', 
                                 params={'shareid': shareid, 'from': uk, 'bdstoken': self.bdstoken},
-                                data={'fsidlist': f"[{','.join(fs_id_list)}]", 'path': save_path}, 
+                                data={'fsidlist': fs_id_list_str, 'path': save_path}, 
                                 headers=self.headers, verify=False, timeout=20)
                 res = r.json()
             except requests.exceptions.RequestException:
@@ -604,14 +620,10 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                     else:
                         job_manager.add_log(job_id, f"登录成功: {user} (耗时: {get_time_diff(t0)})", "success")
                         t_root = time.time()
-                        # 找到这一行（大约在 worker_thread 函数里）
-                        # root_fid = await q_engine.get_folder_id(QUARK_SAVE_PATH) 
-                        # 替换为 👇：
-                        root_fid = await q_engine.ensure_path(QUARK_SAVE_PATH)
-                        # 同时修改下面的判断日志（可选，为了逻辑通顺）：
-                        if not root_fid:
-                            job_manager.add_log(job_id, f"目录创建失败: {QUARK_SAVE_PATH}", "error")
-                        else:# ... 继续执行
+                        root_fid = await q_engine.get_folder_id(QUARK_SAVE_PATH)
+                        if not root_fid: 
+                            job_manager.add_log(job_id, f"目录不存在，手动在夸克网盘中创建 来自：分享/LinkChanger文件夹 (耗时: {get_time_diff(t_root)})", "error")
+                        else:
                             for match in q_matches:
                                 current_idx += 1
                                 raw_url = match.group(1)
@@ -664,6 +676,7 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                             
                             t_task = time.time()
                             name = extract_smart_folder_name(input_text, match.start())
+                            # 🚀 优化：传递 is_inject=False 走正常逻辑，但百度内部process_url会正确处理缓存
                             new_url, msg, new_dir_path = b_engine.process_url({'url': raw_url, 'pwd': pwd, 'name': name}, BAIDU_SAVE_PATH)
                             t_task_end = get_time_diff(t_task)
                             
@@ -671,6 +684,7 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                                 log_msg = f"{step_prefix} 转存成功: {new_url} (耗时: {t_task_end})"
                                 if FIXED_IMAGE_CONFIG['baidu']['enabled'] and new_dir_path:
                                     t_img = time.time()
+                                    # 🚀 优化：调用时确保参数一致，利用缓存
                                     img_res_url, img_msg, _ = b_engine.process_url({'url': FIXED_IMAGE_CONFIG['baidu']['url'], 'pwd': FIXED_IMAGE_CONFIG['baidu']['pwd']}, new_dir_path, is_inject=True)
                                     if img_res_url == "INJECT_OK": log_msg += f" + 植入(耗时:{get_time_diff(t_img)})"
 
@@ -753,7 +767,7 @@ def main():
     if not check_password():
         return
 
-    st.title("网盘转存助手")
+    st.title("网盘转存助手Miao~")
     
     bark_key = get_secret("general", "bark_key")
     pushdeer_key = get_secret("general", "pushdeer_key")
@@ -799,7 +813,7 @@ def main():
     current_job_id = query_params.get("job_id", None)
 
     if not current_job_id:
-        st.info("💡 提示：后台自动运行，任务开始后可关闭网页。")
+        st.info("💡 提示：夸克/百度后台自动运行，任务开始后可切换网页或软件后台。")
         input_text = st.text_area("📝 粘贴链接...", height=150, key="link_input")
         
         if st.button("🚀 开始转存", type="primary", use_container_width=True):
