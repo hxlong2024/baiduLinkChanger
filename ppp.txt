@@ -1,0 +1,373 @@
+import streamlit as st
+import sqlite3
+import os
+import time
+import uuid
+import threading
+import datetime
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta, timezone
+import httpx
+import requests
+import re
+import random
+import string
+import html
+from urllib.parse import quote
+from retrying import retry
+
+# ==========================================
+# 0. 数据库管理 (SQLite3 版 - 更快更稳)
+# ==========================================
+DB_FILE = "linkchanger.db"
+
+class DBManager:
+    def __init__(self):
+        self._init_db()
+
+    def _get_conn(self):
+        # check_same_thread=False 允许 Streamlit 多线程访问
+        return sqlite3.connect(DB_FILE, check_same_thread=False)
+
+    def _init_db(self):
+        conn = self._get_conn()
+        c = conn.cursor()
+        # 创建用户表：UID作为主键，保证唯一
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+                        uid TEXT PRIMARY KEY,
+                        name TEXT,
+                        pin TEXT,
+                        wechat TEXT,
+                        q_cookie TEXT,
+                        b_cookie TEXT,
+                        q_img TEXT,
+                        b_img TEXT,
+                        b_pwd TEXT,
+                        created_at TEXT
+                    )''')
+        conn.commit()
+        conn.close()
+
+    # --- 用户操作 ---
+    def add_user(self, uid, name, pin, wechat):
+        conn = self._get_conn()
+        c = conn.cursor()
+        try:
+            created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+            c.execute("INSERT INTO users (uid, name, pin, wechat, q_cookie, b_cookie, q_img, b_img, b_pwd, created_at) VALUES (?, ?, ?, ?, '', '', '', '', '', ?)",
+                      (uid, name, pin, wechat, created_at))
+            conn.commit()
+            return True, "添加成功"
+        except sqlite3.IntegrityError:
+            return False, "UID 已存在，请换一个"
+        except Exception as e:
+            return False, f"数据库错误: {e}"
+        finally:
+            conn.close()
+
+    def get_user(self, uid):
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE uid=?", (uid,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            # 将元组转为字典，方便使用
+            return {
+                "uid": row[0], "name": row[1], "pin": row[2], "wechat": row[3],
+                "q": row[4], "b": row[5], 
+                "q_img": row[6], "b_img": row[7], "b_pwd": row[8]
+            }
+        return None
+
+    def get_all_users(self):
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("SELECT uid, name, wechat, created_at FROM users")
+        rows = c.fetchall()
+        conn.close()
+        return rows # list of tuples
+
+    def update_user_profile(self, uid, name, pin, q, b, q_img, b_img, b_pwd):
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute('''UPDATE users SET 
+                     name=?, pin=?, q_cookie=?, b_cookie=?, 
+                     q_img=?, b_img=?, b_pwd=? 
+                     WHERE uid=?''', 
+                  (name, pin, q, b, q_img, b_img, b_pwd, uid))
+        conn.commit()
+        conn.close()
+
+    def delete_user(self, uid):
+        conn = self._get_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE uid=?", (uid,))
+        conn.commit()
+        conn.close()
+
+db = DBManager()
+
+# ==========================================
+# 1. 核心 Engine 与 Worker (请填入你的真实代码)
+# ==========================================
+# 🔴🔴🔴 极其重要：请在此处粘贴你原本好用的 QuarkEngine, BaiduEngine, JobManager 代码 🔴🔴🔴
+# 🔴🔴🔴 否则程序无法运行转存功能 🔴🔴🔴
+
+# --- Mock 代码开始 (仅用于演示结构，请替换) ---
+# (为了节省篇幅，假设你已经把 helper functions, QuarkEngine, BaiduEngine 贴在这里了)
+
+# 这里我只放 JobManager，防止报错
+@st.cache_resource
+class JobManager:
+    def __init__(self): self.jobs = {}
+    def create_job(self): 
+        jid = str(uuid.uuid4())[:8]
+        self.jobs[jid] = {"status": "running", "logs": [], "result_text": "", "progress": {"current":0,"total":0}, "created_at": datetime.now(), "summary": {}}
+        return jid
+    def get_job(self, jid): return self.jobs.get(jid)
+    def add_log(self, jid, msg, type="info"): 
+        if jid in self.jobs: self.jobs[jid]["logs"].append({"time": "00:00", "msg": msg, "type": type})
+    def complete_job(self, jid, text, sum): 
+        if jid in self.jobs: 
+            self.jobs[jid]["status"]="done"; self.jobs[jid]["result_text"]=text; self.jobs[jid]["summary"]=sum
+    def update_progress(self, jid, c, t):
+        if jid in self.jobs: self.jobs[jid]["progress"] = {"current": c, "total": t}
+
+job_manager = JobManager()
+
+def worker_thread(job_id, input_text, q_c, b_c, bark, push, img_conf):
+    # 🔴 请替换为真实的 worker_thread 逻辑
+    time.sleep(1)
+    job_manager.complete_job(job_id, input_text + "\n(处理完毕)", {"success": 1, "total": 1, "duration": "1s"})
+# --- Mock 代码结束 ---
+
+
+# ==========================================
+# 2. 界面视图逻辑
+# ==========================================
+st.set_page_config(page_title="LinkChanger Pro", page_icon="⚡", layout="wide")
+
+def get_manager():
+    return stx.CookieManager()
+
+def page_admin():
+    st.markdown("## 🛡️ 用户管理后台")
+    
+    # 简单的后台密码验证 (从 secrets 读取)
+    ADMIN_PWD = st.secrets.get("general", {}).get("admin_password", "admin888")
+    
+    if "admin_logged_in" not in st.session_state:
+        pwd = st.text_input("请输入管理员密码", type="password")
+        if st.button("登录"):
+            if pwd == ADMIN_PWD:
+                st.session_state.admin_logged_in = True
+                st.rerun()
+            else:
+                with st.spinner("验证中..."):
+                    time.sleep(2) # 防爆破延迟
+                st.error("密码错误")
+        return
+
+    # === 新增用户表单 ===
+    with st.container(border=True):
+        st.subheader("➕ 新增用户")
+        c1, c2 = st.columns(2)
+        new_uid = c1.text_input("分配 UID (如: tony, vip1)", help="用户将通过 ?uid=这个值 访问")
+        new_name = c2.text_input("用户昵称")
+        c3, c4 = st.columns(2)
+        new_wechat = c3.text_input("用户微信号 (仅记录)")
+        new_pin = c4.text_input("初始密码", value="123456")
+        
+        if st.button("创建用户", type="primary"):
+            if not new_uid or not new_name:
+                st.error("UID 和 昵称 必填")
+            else:
+                ok, msg = db.add_user(new_uid, new_name, new_pin, new_wechat)
+                if ok:
+                    st.success(f"用户 {new_name} 创建成功！")
+                    st.info(f"请复制链接发给他: `?uid={new_uid}`")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+    st.divider()
+    
+    # === 用户列表 ===
+    st.subheader("👥 用户列表")
+    users = db.get_all_users() # [(uid, name, wechat, time), ...]
+    
+    if not users:
+        st.caption("暂无用户")
+    
+    for u in users:
+        uid, name, wechat, t = u
+        with st.expander(f"👤 {name} (UID: {uid})"):
+            st.write(f"微信号: `{wechat}`")
+            st.write(f"创建时间: {t}")
+            st.code(f"?uid={uid}")
+            
+            if st.button("🗑️ 删除该用户", key=f"del_{uid}"):
+                db.delete_user(uid)
+                st.warning(f"用户 {uid} 已删除")
+                time.sleep(1)
+                st.rerun()
+
+def page_user_tool(uid):
+    # 每次刷新都从数据库读最新数据
+    user_data = db.get_user(uid)
+    if not user_data:
+        st.error("❌ 账号不存在或已被删除")
+        return
+
+    # === 侧边栏：个人配置 ===
+    with st.sidebar:
+        st.header(f"👤 {user_data['name']}")
+        
+        with st.expander("⚙️ 个人配置", expanded=False):
+            # 1. 只读区域
+            st.caption("🚫 以下信息不可修改")
+            st.text_input("专属 UID", value=user_data['uid'], disabled=True)
+            st.text_input("绑定微信号", value=user_data['wechat'], disabled=True)
+            
+            st.divider()
+            
+            # 2. 可修改区域
+            st.caption("✏️ 可修改信息")
+            new_name = st.text_input("昵称", value=user_data['name'])
+            new_pin = st.text_input("登录密码", value=user_data['pin'], type="password")
+            
+            st.caption("🍪 网盘 Cookie (必填)")
+            new_q = st.text_area("夸克 Cookie", value=user_data['q'], height=100)
+            new_b = st.text_area("百度 Cookie", value=user_data['b'], height=100)
+            
+            st.caption("📢 广告与植入 (选填)")
+            new_q_img = st.text_input("夸克广告链接", value=user_data['q_img'])
+            new_b_img = st.text_input("百度广告链接", value=user_data['b_img'])
+            new_b_pwd = st.text_input("百度提取码", value=user_data['b_pwd'])
+            
+            if st.button("💾 保存配置"):
+                db.update_user_profile(
+                    uid, new_name, new_pin, 
+                    new_q, new_b, 
+                    new_q_img, new_b_img, new_b_pwd
+                )
+                st.toast("保存成功！下次登录生效", icon="✅")
+                time.sleep(1)
+                st.rerun()
+
+        if st.button("🚪 退出登录"):
+             get_manager().delete(f"auth_{uid}")
+             st.query_params.clear()
+             st.rerun()
+
+    # === 主工具界面 ===
+    st.title("⚡ 网盘转存助手")
+    
+    # Cookie 状态提示
+    q_ok = bool(user_data['q'])
+    b_ok = bool(user_data['b'])
+    
+    if not q_ok and not b_ok:
+        st.warning("👈 请先点击左侧 **【个人配置】** 填入网盘 Cookie 才能使用！")
+    
+    # 任务提交逻辑
+    input_text = st.text_area("粘贴分享链接 (支持混合粘贴)", height=150)
+    
+    if st.button("🚀 开始转存", type="primary", use_container_width=True):
+        if not input_text.strip(): return
+        if not q_ok and not b_ok:
+            st.error("未配置任何 Cookie，无法任务")
+            return
+            
+        jid = job_manager.create_job()
+        
+        # 组装配置传给 Worker
+        img_conf = {
+            "quark": {"url": user_data['q_img'], "enabled": bool(user_data['q_img'])},
+            "baidu": {"url": user_data['b_img'], "pwd": user_data['b_pwd'], "enabled": bool(user_data['b_img'])}
+        }
+        
+        # 启动线程
+        t = threading.Thread(target=worker_thread, args=(
+            jid, input_text, 
+            user_data['q'], user_data['b'], 
+            "", "", # 推送key暂时留空，如果数据库加字段可传入
+            img_conf
+        ))
+        t.start()
+        st.query_params["job_id"] = jid
+        st.query_params["uid"] = uid
+        st.rerun()
+
+    # 任务状态回显
+    curr_jid = st.query_params.get("job_id")
+    if curr_jid:
+        job = job_manager.get_job(curr_jid)
+        if job:
+            if job['status'] == 'running':
+                st.info("🔄 处理中...")
+            elif job['status'] == 'done':
+                st.success("✅ 完成")
+                st.text_area("结果", value=job['result_text'])
+                if st.button("开始新任务"):
+                    st.query_params["job_id"] = ""
+                    st.query_params["uid"] = uid
+                    st.rerun()
+            
+            # 显示日志
+            with st.expander("执行日志", expanded=True):
+                for log in job['logs']:
+                    st.text(f"{log['time']} - {log['msg']}")
+
+# ==========================================
+# 3. 程序入口 (Main)
+# ==========================================
+def main():
+    # 获取 URL 参数
+    uid_param = st.query_params.get("uid", None)
+
+    # 从 secrets 读取隐藏的管理员 UID
+    HIDDEN_ADMIN_UID = st.secrets.get("general", {}).get("admin_uid", "admin_entry_default")
+
+    # 1. 没有 UID -> 显示403页面
+    if not uid_param:
+        st.title("🚫 Access Denied")
+        st.warning("本工具为内部邀请制。请联系管理员获取专属访问链接。")
+        return
+
+    # 2. 管理员入口
+    if uid_param == HIDDEN_ADMIN_UID:
+        page_admin()
+        return
+
+    # 3. 普通用户鉴权
+    user_data = db.get_user(uid_param)
+    if not user_data:
+        st.error("🚫 无效的链接 (UID Error)")
+        return
+    
+    # Cookie 自动登录检查
+    cookie_manager = get_manager()
+    cookie_key = f"auth_{uid_param}"
+    
+    if cookie_manager.get(cookie_key) == "logged_in":
+        page_user_tool(uid_param)
+        return
+    
+    # 密码锁屏
+    st.markdown(f"### 🔒 {user_data['name']}，请解锁")
+    pin_input = st.text_input("请输入密码", type="password")
+    
+    if st.button("解锁"):
+        if pin_input == user_data['pin']:
+            # 登录成功，写入浏览器Cookie
+            cookie_manager.set(cookie_key, "logged_in", expires_at=datetime.now() + timedelta(days=30))
+            st.rerun()
+        else:
+            time.sleep(1)
+            st.error("密码错误")
+
+if __name__ == "__main__":
+    main()
