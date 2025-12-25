@@ -1,5 +1,5 @@
 streamlit
-httpx>=0.24.0
+httpx
 requests
 retrying
-extra-streamlit-components  <-- 新增这行
+extra-streamlit-components
