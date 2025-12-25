@@ -81,7 +81,6 @@ st.set_page_config(
 
 st.markdown('<div id="top-anchor" style="position:absolute; top:-50px; visibility:hidden;"></div>', unsafe_allow_html=True)
 
-# 样式代码保持不变，为了节省篇幅，这里折叠了，实际运行时请保留你的 CSS
 st.markdown("""
     <style>
     .block-container { padding-top: 32px !important; padding-bottom: 3rem; }
@@ -181,7 +180,7 @@ def send_notification(bark_key, pushdeer_key, title, body):
         except: pass
 
 # ==========================================
-# 3. 引擎类 (功能未修改，保持原样)
+# 3. 引擎类 (含百度调试增强版)
 # ==========================================
 class QuarkEngine:
     def __init__(self, cookies: str):
@@ -347,7 +346,7 @@ class BaiduEngine:
         try:
             r = self.s.get(url, params={'fields': '["bdstoken","token","uk","isdocuser"]'}, headers=self.headers, verify=False)
             res = r.json()
-            print(f"[BaiduEngine] Token 响应: {str(res)[:100]}...") # 只打前100字防止刷屏
+            print(f"[BaiduEngine] Token 响应: {str(res)[:100]}...")
             if res.get('errno') == 0:
                 self.bdstoken = res['result']['bdstoken']
                 print(f"[BaiduEngine] ✅ 获取 Token 成功: {self.bdstoken}")
@@ -380,7 +379,6 @@ class BaiduEngine:
     def process_url(self, url_info: dict, root_path: str, is_inject: bool = False):
         print(f"\n--- [BaiduEngine] 开始处理 URL: {url_info.get('url')} ---")
         
-        # 缓存逻辑
         if is_inject and self.inject_cache:
             shareid = self.inject_cache['shareid']
             uk = self.inject_cache['uk']
@@ -409,7 +407,6 @@ class BaiduEngine:
                 print("[BaiduEngine] 请求页面内容...")
                 content = self.s.get(clean_url, headers=self.headers, verify=False).text
                 
-                # 调试：检测是否出现验证码
                 if "验证码" in content or "verify" in content:
                     print("[BaiduEngine] ❌ 警告：页面包含验证码关键字！IP可能被拦截。")
 
@@ -432,7 +429,6 @@ class BaiduEngine:
                     return None, "页面解析失败(可能IP被拦截)", None
             except Exception as e: return None, f"异常: {str(e)[:20]}", None
 
-        # --- 转存逻辑 ---
         try:
             if is_inject:
                 save_path = root_path
@@ -470,7 +466,6 @@ class BaiduEngine:
 
             if is_inject: return "INJECT_OK", "成功", save_path
 
-            # --- 分享逻辑 ---
             print("[BaiduEngine] 获取已转存文件ID用于分享...")
             r = self.s.get('https://pan.baidu.com/api/list', params={'dir': root_path, 'bdstoken': self.bdstoken}, headers=self.headers, verify=False)
             target_fsid = None
@@ -497,15 +492,14 @@ class BaiduEngine:
             print(f"[BaiduEngine] ❌ 最终异常: {e}")
             return None, f"发生异常: {str(e)[:20]}...", None
 
-
 # ==========================================
-# 4. 常量定义 (多用户模式下，这部分移到 Main 中动态生成)
+# 4. 常量定义
 # ==========================================
 QUARK_SAVE_PATH = "来自：分享/LinkChanger"
 BAIDU_SAVE_PATH = "/我的资源/LinkChanger"
 
 # ==========================================
-# 5. 核心：后台线程 Worker (已修改：接收 image_config 参数)
+# 5. 核心：后台线程 Worker
 # ==========================================
 def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, pushdeer_key, image_config):
     
@@ -558,7 +552,6 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                                 
                                 if new_url:
                                     log_msg = f"{step_prefix} 转存成功: {new_url} (耗时: {t_task_end})"
-                                    # 🔥 修改点：使用传入的 image_config 字典，而不是全局变量
                                     if image_config['quark']['enabled'] and new_fid:
                                         t_img = time.time()
                                         res_url, res_msg, _ = await q_engine.process_url(image_config['quark']['url'], new_fid, is_inject=True)
@@ -602,7 +595,6 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
                             
                             if new_url:
                                 log_msg = f"{step_prefix} 转存成功: {new_url} (耗时: {t_task_end})"
-                                # 🔥 修改点：使用传入的 image_config 字典
                                 if image_config['baidu']['enabled'] and new_dir_path:
                                     t_img = time.time()
                                     img_res_url, img_msg, _ = b_engine.process_url({'url': image_config['baidu']['url'], 'pwd': image_config['baidu']['pwd']}, new_dir_path, is_inject=True)
@@ -634,15 +626,13 @@ def worker_thread(job_id, input_text, quark_cookie, baidu_cookie, bark_key, push
 # 6. 主逻辑 (前端 UI + 多用户认证)
 # ==========================================
 
-# Cookie 管理器初始化
-@st.cache_resource(experimental_allow_widgets=True)
+# Cookie 管理器初始化 - 已移除 @st.cache_resource 装饰器
 def get_manager():
     return stx.CookieManager()
 
 @st.cache_data(ttl=300) 
 def check_cookies_validity(q_c, b_c):
     status = {"quark": False, "baidu": False}
-    # ... 检测代码逻辑保持原样，省略 ...
     if q_c:
         try:
             headers = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'cookie': q_c, 'referer': 'https://pan.quark.cn/' }
@@ -673,6 +663,10 @@ def auth_user():
     user_conf = st.secrets["users"][uid]
     stored_pin = str(user_conf.get("pin", ""))
     
+    # 🔥 无密码直达逻辑：如果 pin 为空，直接通过
+    if not stored_pin:
+        return uid, user_conf
+
     # 3. 检查 Cookie 是否有登录记录
     cookie_auth_key = f"auth_{uid}"
     cookie_val = cookie_manager.get(cookie_auth_key)
@@ -760,12 +754,6 @@ def main():
         
         if bark_key or pushdeer_key:
             st.info("📢 消息推送: 开启")
-            
-        # 退出登录按钮
-        if st.button("🚪 退出登录"):
-             cookie_manager = get_manager()
-             cookie_manager.delete(f"auth_{uid}")
-             st.rerun()
 
     query_params = st.query_params
     current_job_id = query_params.get("job_id", None)
@@ -784,7 +772,6 @@ def main():
 
             new_job_id = job_manager.create_job()
             
-            # 🔥 修改点：传递 user_conf 中生成的 current_image_config
             t = threading.Thread(target=worker_thread, args=(new_job_id, input_text, q_c, b_c, bark_key, pushdeer_key, current_image_config))
             t.start()
             
@@ -792,17 +779,12 @@ def main():
             st.rerun()
 
     else:
-        # 任务详情页 UI 代码保持不变 (为了节省篇幅略去，逻辑与原代码一致)
-        # 你的原代码中这部分: job_data = job_manager.get_job(current_job_id)...
-        # 直到 if __name__ == "__main__": 之前的内容完全一样，不需要修改。
-        # 只需要将下面这段代码原样粘贴回来即可：
         job_data = job_manager.get_job(current_job_id)
         if not job_data:
             st.error("❌ 任务不存在或已过期")
             if st.button("🔙 返回"):
                 st.query_params.clear()
-                # 保持 UID 参数，防止退出登录
-                st.query_params["uid"] = uid
+                st.query_params["uid"] = uid # 保持 UID
                 st.rerun()
         else:
             status = job_data['status']
